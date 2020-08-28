@@ -326,6 +326,7 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype)  /
 
 						mp4->trak_clockdemon = md.time_scale;
 						mp4->trak_clockcount = md.duration;
+						mp4->meta_creation_time = md.creation_time;
 
 						if (mp4->trak_clockdemon == 0 || mp4->trak_clockcount == 0)
 						{
@@ -851,13 +852,15 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype)  /
 							printf("Sample Count \t Sample Duration \n");
 						}
 
-						if (num <= (qtsize / 8))
+                        mp4->meta_stts_count = num;
+
+                        if (num <= (qtsize / 8))
 						{
 							entries = num;
 
 							mp4->meta_clockdemon = mp4->trak_clockdemon;
 							mp4->meta_clockcount = mp4->trak_clockcount;
-
+                            mp4->gpmf_creation_time = mp4->meta_creation_time;
 
 							if(mp4->meta_clockdemon == 0)
 							{
@@ -867,12 +870,23 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype)  /
 								break;
 							}
 
-							if(entries > 1){
-								fprintf(stderr, "samples with different times. this case is not handled until now.");
-								exit(1);
-							}
 
-							while (entries > 0)
+                            if (mp4->meta_stts_sample_count)
+                            {
+                                free(mp4->meta_stts_sample_count);
+                                mp4->meta_stts_sample_count = 0;
+                            }
+
+                            if (mp4->meta_stts_duration)
+                            {
+                                free(mp4->meta_stts_duration);
+                                mp4->meta_stts_duration = 0;
+                            }
+
+                            mp4->meta_stts_sample_count = (uint32_t *)malloc(mp4->meta_stts_count * 4);
+                            mp4->meta_stts_duration = (uint32_t *)malloc(mp4->meta_stts_count * 4);
+
+                            while (entries > 0)
 							{
 								uint32_t samplecount;
 								uint32_t duration;
@@ -882,17 +896,23 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype)  /
 								duration = BYTESWAP32(duration);
 
 								samples += samplecount;
-								entries--;
-//								printf("enteries: %d", entries);
 
-								printf("%d  \t\t  %d\n", samplecount, duration);
+
+								mp4->meta_stts_sample_count[entries-1] = samplecount;
+								mp4->meta_stts_duration[entries-1] = duration;
 
 								totaldur += duration;
 								mp4->metadatalength += (double)((double)samplecount * (double)duration / (double)mp4->meta_clockdemon);
 								if (samplecount > 1 || entries == 1)
 									mp4->basemetadataduration = mp4->metadatalength * (double)mp4->meta_clockdemon / (double)samples;
-								}
-							}
+
+                                entries--;
+                            }
+
+
+                        }
+
+                            mp4->gpmf_total_samples = samples;
 							mp4->filepos += len;
 							LongSeek(mp4, qtsize - 8 - len); // skip over stco
 						}
