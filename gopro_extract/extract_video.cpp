@@ -17,16 +17,8 @@
 // to write the first five frames from "myvideofile.mpg" to disk in PPM
 // format.
 
-extern "C"{
-
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavutil/avutil.h>
-#include <libavutil/imgutils.h>
-#include <stdio.h>
-
-}
+#include "extract_video.h"
+#include "color_codes.h"
 
 #include <utils.h>
 #include <string>
@@ -35,23 +27,25 @@ extern "C"{
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <experimental/filesystem>
+#include <iomanip>
 
-void save_to_png(AVFrame *frame, AVCodecContext *codecContext,  int width, int height,
+void GoProVideoExtractor::save_to_png(AVFrame *frame, AVCodecContext *codecContext,  int width, int height,
                  AVRational time_base, std::string filename){
 
 	AVCodec *outCodec = avcodec_find_encoder(AV_CODEC_ID_PNG);
 	AVCodecContext *outCodecCtx = avcodec_alloc_context3(outCodec);
 
-	outCodecCtx->width = codecContext->width;
-	outCodecCtx->height = codecContext->height;
+	outCodecCtx->width = width;
+	outCodecCtx->height = height;
 	outCodecCtx->pix_fmt = AV_PIX_FMT_RGB24;
 	outCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
 	outCodecCtx->codec_id = AV_CODEC_ID_PNG;
 	outCodecCtx->time_base.num = codecContext->time_base.num;
 	outCodecCtx->time_base.den = codecContext->time_base.den;
 
-	frame->height = codecContext->height;
-	frame->width = codecContext->width;
+	frame->height = height;
+	frame->width = width;
 	frame->format = AV_PIX_FMT_RGB24;
 
 	if (!outCodec || avcodec_open2(outCodecCtx, outCodec, NULL) < 0) {
@@ -73,9 +67,9 @@ void save_to_png(AVFrame *frame, AVCodecContext *codecContext,  int width, int h
 	FILE * outPng = fopen(filename.c_str(), "wb");
 	fwrite(outPacket.data, outPacket.size, 1, outPng);
 	fclose(outPng);
-
 }
-void save_raw(AVFrame *pFrame, int width, int height, std::string filename) {
+
+void GoProVideoExtractor::save_raw(AVFrame *pFrame, int width, int height, std::string filename) {
 	FILE *pFile;
 	int  y;
 
@@ -96,9 +90,23 @@ void save_raw(AVFrame *pFrame, int width, int height, std::string filename) {
 	fclose(pFile);
 }
 
-int main(int argc, char *argv[]) {
+int GoProVideoExtractor::extract_frames(const std::string& image_folder, int width, int height) {
 
-	AVFormatContext *pFormatContext = NULL;
+    std::string image_data_folder = image_folder + "/data";
+    if(! std::experimental::filesystem::is_directory(image_data_folder)){
+        std::experimental::filesystem::create_directories(image_data_folder);
+    }
+
+    std::string image_file = image_folder+"/data.csv";
+
+    std::ofstream image_stream;
+    image_stream.open(image_file);
+    image_stream << std::fixed << std::setprecision(19);
+    image_stream << "#timestamp [ns],filename" << std::endl;
+
+    av_register_all();
+
+    AVFormatContext *pFormatContext = NULL;
 	int i, videoStreamIndex;
 	AVCodecContext *pCodecContext = NULL;
 	AVCodec *pCodec = NULL;
@@ -114,28 +122,25 @@ int main(int argc, char *argv[]) {
 	struct SwsContext *sws_ctx = NULL;
 	AVStream *video_stream = NULL;
 
-	if (argc < 2) {
-		printf("Please provide a movie file\n");
-		return -1;
-	}
 
 	// Open video file
-
+    std::cout << "Opening Video File: " << video_file << std::endl;
 	pFormatContext = avformat_alloc_context();
 	if (!pFormatContext) {
 		printf("ERROR could not allocate memory for Format Context");
 		return -1;
 	}
 
-	if (avformat_open_input(&pFormatContext, argv[1], NULL, NULL) != 0)
-		return -1; // Couldn't open file
-
+	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0){
+	    std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
+        return -1;
+	}
 	// Retrieve stream information
 	if (avformat_find_stream_info(pFormatContext, NULL) < 0)
 		return -1; // Couldn't find stream information
 
 	// Dump information about file onto standard error
-	av_dump_format(pFormatContext, 0, argv[1], 0);
+	av_dump_format(pFormatContext, 0, video_file.c_str(), 0);
 
 	std::string video_creation_time;
 
@@ -201,8 +206,8 @@ int main(int argc, char *argv[]) {
 
 	//PIX_FMT_RGB24
 	// Determine required buffer size and allocate buffer
-	numBytes=av_image_get_buffer_size(AV_PIX_FMT_RGB24, pCodecContext->width,
-	                                  pCodecContext->height, 8);
+	numBytes=av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
+	                                  height, 1);
 	buffer=(uint8_t *)av_malloc(numBytes*sizeof(uint8_t));
 
 	sws_ctx =
@@ -211,8 +216,8 @@ int main(int argc, char *argv[]) {
 							pCodecContext->width,
 							pCodecContext->height,
 							pCodecContext->pix_fmt,
-							pCodecContext->width,
-							pCodecContext->height,
+							width,
+							height,
 							AV_PIX_FMT_RGB24,
 							SWS_BILINEAR,
 							nullptr,
@@ -224,10 +229,12 @@ int main(int argc, char *argv[]) {
 	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
 	// of AVPicture
 	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
-	                     pCodecContext->width, pCodecContext->height, 1);
+	                     width, height, 1);
 
 
 	uint64_t start_time = parseISO(video_creation_time);
+//	std::cout << "Video Creation Time: " << uint64_to_string(start_time) << std::endl;
+
 	double global_clock;
 	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
 
@@ -277,58 +284,23 @@ int main(int argc, char *argv[]) {
 						);
 
 				// Save the frame to disk
-				auto nanosecs = (uint64_t)(global_clock * 1e9);
+//				std::cout << "Global Clock: " << global_clock << std::endl;
+				uint64_t nanosecs = (uint64_t)(global_clock * 1e9);
+//				std::cout << "Nano secs: " << nanosecs << std::endl;
 				uint64_t current_stamp = start_time + nanosecs;
-				std::string stamped_image_filename = uint64_to_string(current_stamp);
-
-//				AVCodec *outCodec = avcodec_find_encoder(AV_CODEC_ID_PNG);
-//				AVCodecContext *outCodecCtx = avcodec_alloc_context3(outCodec);
-//
-//				outCodecCtx->width = pCodecContext->width;
-//				outCodecCtx->height = pCodecContext->height;
-//				outCodecCtx->pix_fmt = AV_PIX_FMT_RGB24;
-//				outCodecCtx->codec_type = AVMEDIA_TYPE_VIDEO;
-//				outCodecCtx->codec_id = AV_CODEC_ID_PNG;
-//				outCodecCtx->time_base.num = pCodecContext->time_base.num;
-//				outCodecCtx->time_base.den = pCodecContext->time_base.den;
-//
-//				pFrameRGB->height = pCodecContext->height;
-//				pFrameRGB->width = pCodecContext->width;
-//				pFrameRGB->format = AV_PIX_FMT_RGB24;
-//
-//				if (!outCodec || avcodec_open2(outCodecCtx, outCodec, NULL) < 0) {
-//					return -1;
-//				}
-//
-//				AVPacket outPacket;
-//				av_init_packet(&outPacket);
-//				outPacket.size = 0;
-//				outPacket.data = NULL;
-//
-//				avcodec_send_frame(outCodecCtx, pFrameRGB);
-//				int ret = -1;
-//				while (ret < 0){
-//					ret = avcodec_receive_packet(outCodecCtx, &outPacket);
-//				}
-//
-//				std::string filename  = stamped_image_filename + ".png";
-//				FILE * outPng = fopen(filename.c_str(), "wb");
-//				fwrite(outPacket.data, outPacket.size, 1, outPng);
-//				fclose(outPng);
-
-//				av_free(outPacket);
-
-				save_to_png(pFrameRGB, pCodecContext, pCodecContext->width,
-				pCodecContext->height, video_stream->time_base, stamped_image_filename);
-
-//				save_raw(pFrameRGB, pCodecContext->width, pCodecContext->height, stamped_image_filename);
-//				std::this_thread::sleep_for(std::chrono::seconds(5));
+				std::string string_stamp = uint64_to_string(current_stamp);
+				std::string stamped_image_filename = image_data_folder + "/" + string_stamp;
+                image_stream << string_stamp << "," << string_stamp+".png" << std::endl;
+				save_to_png(pFrameRGB, pCodecContext, width, height, video_stream->time_base, stamped_image_filename);
 			}
 		}
 
 		// Free the packet that was allocated by av_read_frame
 		av_packet_unref(&packet);
 	}
+
+
+	image_stream.close();
 
 	// Free the RGB image
 	av_free(buffer);

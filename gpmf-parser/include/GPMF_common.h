@@ -2,9 +2,9 @@
  * 
  *  @brief GPMF Parser library include
  * 
- *  @version 1.3.0
+ *  @version 2.1.0
  * 
- *  (C) Copyright 2017-2019 GoPro Inc (http://gopro.com/).
+ *  (C) Copyright 2017-2020 GoPro Inc (http://gopro.com/).
  *
  *  Licensed under either:
  *  - Apache License, Version 2.0, http://www.apache.org/licenses/LICENSE-2.0  
@@ -29,15 +29,16 @@ extern "C" {
 typedef enum GPMF_ERROR
 {
 	GPMF_OK = 0,
-	GPMF_ERROR_MEMORY,
-	GPMF_ERROR_BAD_STRUCTURE,
-	GPMF_ERROR_BUFFER_END,
-	GPMF_ERROR_FIND,
-	GPMF_ERROR_LAST,
-	GPMF_ERROR_TYPE_NOT_SUPPORTED,
-	GPMF_ERROR_SCALE_NOT_SUPPORTED,
-	GPMF_ERROR_SCALE_COUNT,
-	GPMF_ERROR_RESERVED
+	GPMF_ERROR_MEMORY,				// NULL Pointer or insufficient memory 
+	GPMF_ERROR_BAD_STRUCTURE,		// Non-complaint GPMF structure detected
+	GPMF_ERROR_BUFFER_END,			// reached the end of the provided buffer
+	GPMF_ERROR_FIND,				// Find failed to return the requested data, but structure is valid.
+	GPMF_ERROR_LAST,				// reached the end of a search at the current nest level
+	GPMF_ERROR_TYPE_NOT_SUPPORTED,	// a needed TYPE tuple is missing or has unsupported elements.
+	GPMF_ERROR_SCALE_NOT_SUPPORTED, // scaling for an non-scaling type, e.g. scaling a FourCC field to a float.
+	GPMF_ERROR_SCALE_COUNT,			// A SCAL tuple has a mismatching element count.
+	GPMF_ERROR_UNKNOWN_TYPE,		// Potentially valid data with a new or unknown type.
+	GPMF_ERROR_RESERVED				// internal usage
 } GPMF_ERROR;
 
 #define GPMF_ERR	uint32_t

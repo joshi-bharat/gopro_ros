@@ -76,13 +76,6 @@ typedef struct mp4object
 	uint32_t movie_creation_time;
 	uint32_t timeBaseFourCC;
 
-	uint32_t meta_stts_count;
-	uint32_t *meta_stts_sample_count;
-	uint32_t *meta_stts_duration;
-	uint32_t meta_creation_time;
-    uint32_t gpmf_creation_time;
-    uint32_t gpmf_total_samples;
-
 } mp4object;
 
 #define MAKEID(a,b,c,d)			(((d&0xff)<<24)|((c&0xff)<<16)|((b&0xff)<<8)|(a&0xff))

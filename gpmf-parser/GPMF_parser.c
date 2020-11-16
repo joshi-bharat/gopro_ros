@@ -2,7 +2,7 @@
  * 
  *  @brief GPMF Parser library
  *
- *  @version 2.0.0
+ *  @version 2.1.0
  * 
  *  (C) Copyright 2017-2020 GoPro Inc (http://gopro.com/).
  *	
@@ -24,8 +24,8 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "include/GPMF_parser.h"
-#include "include/GPMF_bitstream.h"
+#include "GPMF_parser.h"
+#include "GPMF_bitstream.h"
 
 
 #ifdef DBG
@@ -52,11 +52,30 @@ GPMF_ERR IsValidSize(GPMF_stream *ms, uint32_t size) // size is in longs not byt
 	return GPMF_ERROR_BAD_STRUCTURE;
 }
 
+GPMF_ERR SkipLevel(GPMF_stream* ms)
+{
+	if (ms)
+	{
+		ms->pos += ms->nest_size[ms->nest_level];
+		ms->nest_size[ms->nest_level] = 0;
+		while (ms->nest_level > 0 && ms->nest_size[ms->nest_level] == 0)
+			ms->nest_level--;
+
+		uint32_t size = (GPMF_DATA_SIZE(ms->buffer[ms->pos + 1]) >> 2);
+		if (GPMF_OK != IsValidSize(ms, size))
+			return GPMF_ERROR_BAD_STRUCTURE;
+		else
+			return GPMF_OK;
+	}
+	return GPMF_ERROR_BAD_STRUCTURE;
+}
+
 
 GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 {
 	if (ms)
 	{
+		GPMF_ERROR ret = GPMF_OK;
 		uint32_t currpos = ms->pos;
 		uint32_t nestsize = ms->nest_size[ms->nest_level];
 		if (nestsize == 0 && ms->nest_level == 0)
@@ -77,10 +96,11 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 				uint32_t type_size_repeat = ms->buffer[ms->pos + 1];
 				uint32_t size = GPMF_DATA_SIZE(type_size_repeat) >> 2;
 				uint8_t type = GPMF_SAMPLE_TYPE(type_size_repeat);
-				if(type != GPMF_TYPE_NEST && type != GPMF_TYPE_COMPLEX && type != GPMF_TYPE_COMPRESSED && GPMF_SizeofType(type) == 0)
+				if(type != GPMF_TYPE_NEST && type != GPMF_TYPE_COMPLEX && type != GPMF_TYPE_COMPRESSED && GPMF_SizeofType((GPMF_SampleType)type) == 0)
 				{
-					DBG_MSG("ERROR: unknown datatype-- GPMF_ERROR_BAD_STRUCTURE\n");
-					return GPMF_ERROR_BAD_STRUCTURE;
+					ret = GPMF_ERROR_UNKNOWN_TYPE;
+					DBG_MSG("MINOR ERROR: unknown datatype-- GPMF_ERROR_UNKNOWN_TYPE\n");
+					//continue looking for structural errors
 				}
 
 				if (GPMF_SAMPLE_SIZE(type_size_repeat) == 0)
@@ -108,13 +128,16 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 					ms->nest_size[ms->nest_level] = size;
 					validnest = GPMF_Validate(ms, recurse);
 					ms->nest_level--;
-					if (GPMF_OK != validnest)
+					if (GPMF_ERROR_BAD_STRUCTURE == validnest)
 					{
 						DBG_MSG("ERROR: invalid nest within %c%c%c%c -- GPMF_ERROR_BAD_STRUCTURE\n", PRINTF_4CC(key));
 						return GPMF_ERROR_BAD_STRUCTURE;
 					}
 					else
 					{
+						if (GPMF_ERROR_UNKNOWN_TYPE == validnest)
+							ret = GPMF_ERROR_UNKNOWN_TYPE;
+
 						if (ms->nest_level == 0)
 							ms->device_count++;
 					}
@@ -137,7 +160,7 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 				if (ms->pos == ms->buffer_size_longs)
 				{
 					ms->pos = currpos;
-					return GPMF_OK;
+					return ret;
 				}
 			}
 			else
@@ -153,7 +176,7 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 				else if (ms->nest_level == 0 && ms->device_count > 0)
 				{
 					ms->pos = currpos;
-					return GPMF_OK;
+					return ret;
 				}
 				else
 				{
@@ -164,7 +187,7 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 		}
 
 		ms->pos = currpos;
-		return GPMF_OK;
+		return ret;
 	}
 	else
 	{
@@ -205,14 +228,11 @@ GPMF_ERR GPMF_Init(GPMF_stream *ms, uint32_t *buffer, uint32_t datasize)
 			uint32_t size = GPMF_DATA_SIZE(buffer[pos+1]);
 			pos += 2 + (size >> 2);
 		}
-		if ((pos*4) < datasize && buffer[pos] == GPMF_KEY_END) // NULL terminated GPMF
-		{
-			datasize = pos * 4;
-		}
-		if (pos * 4 == datasize)
+
+		if (pos > 0 && pos * 4 <= datasize)
 		{
 			ms->buffer = buffer;
-			ms->buffer_size_longs = (datasize + 3) >> 2;
+			ms->buffer_size_longs = pos;
 			ms->cbhandle = 0;
 
 			GPMF_ResetState(ms);
@@ -250,13 +270,19 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 			uint32_t key, type = GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]);
 			uint32_t size = (GPMF_DATA_SIZE(ms->buffer[ms->pos + 1]) >> 2);
 
-			if (GPMF_OK != IsValidSize(ms, size)) return GPMF_ERROR_BAD_STRUCTURE;
+			if (GPMF_OK != IsValidSize(ms, size))
+			{
+				if (recurse & GPMF_TOLERANT && recurse & GPMF_RECURSE_LEVELS) // Skip this nest level as the sizes within this level are corrupt.
+					return SkipLevel(ms);
+				else
+					return GPMF_ERROR_BAD_STRUCTURE;
+			}
 
 			if (GPMF_TYPE_NEST == type && GPMF_KEY_DEVICE == ms->buffer[ms->pos] && ms->nest_level == 0)
 			{
 				ms->last_level_pos[ms->nest_level] = ms->pos;
 				ms->nest_size[ms->nest_level] = size;
-				if (recurse)
+				if (recurse & GPMF_RECURSE_LEVELS)
 					ms->pos += 2;
 				else
 					ms->pos += 2 + size;
@@ -266,7 +292,7 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 				if (size + 2 > ms->nest_size[ms->nest_level])
 					return GPMF_ERROR_BAD_STRUCTURE;
 
-				if (recurse && type == GPMF_TYPE_NEST)
+				if (recurse & GPMF_RECURSE_LEVELS && type == GPMF_TYPE_NEST)
 				{
 					ms->last_level_pos[ms->nest_level] = ms->pos;
 					ms->pos += 2;
@@ -280,7 +306,7 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 				}
 				else
 				{
-					if (recurse)
+					if (recurse & GPMF_RECURSE_LEVELS)
 					{
 						ms->pos += size + 2;
 						ms->nest_size[ms->nest_level] -= size + 2;
@@ -317,7 +343,7 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 
 			if (ms->pos < ms->buffer_size_longs)
 			{
-				while (ms->pos < ms->buffer_size_longs && ms->nest_size[ms->nest_level] > 0 && ms->buffer[ms->pos] == GPMF_KEY_END)
+				while (ms->pos+1 < ms->buffer_size_longs && ms->nest_size[ms->nest_level] > 0 && ms->buffer[ms->pos] == GPMF_KEY_END)
 				{
 					ms->pos++;
 					ms->nest_size[ms->nest_level]--;
@@ -327,16 +353,30 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 				{
 					key = ms->buffer[ms->pos];
 					if (!GPMF_VALID_FOURCC(key))
-						return GPMF_ERROR_BAD_STRUCTURE;
+					{
+						if (recurse & GPMF_TOLERANT && recurse & GPMF_RECURSE_LEVELS) // Skip this nest level as the sizes within this level are corrupt.
+							return SkipLevel(ms);
+						else
+							return GPMF_ERROR_BAD_STRUCTURE;
+					}
 
 					if (GPMF_SAMPLE_SIZE(ms->buffer[ms->pos + 1]) == 0)
-						return GPMF_ERROR_BAD_STRUCTURE;
+					{
+						if (recurse & GPMF_TOLERANT && recurse & GPMF_RECURSE_LEVELS) // Skip this nest level as the sizes within this level are corrupt.
+							return SkipLevel(ms);
+						else
+							return GPMF_ERROR_BAD_STRUCTURE;
+					}
 
 					type = GPMF_SAMPLE_TYPE(ms->buffer[ms->pos+1]);
-					if (type != GPMF_TYPE_NEST && type != GPMF_TYPE_COMPLEX && type != GPMF_TYPE_COMPRESSED && GPMF_SizeofType(type) == 0)
-						return GPMF_ERROR_BAD_STRUCTURE;
-
-					if (key == GPMF_KEY_DEVICE_ID)
+					if (type != GPMF_TYPE_NEST && type != GPMF_TYPE_COMPLEX && type != GPMF_TYPE_COMPRESSED && GPMF_SizeofType((GPMF_SampleType)type) == 0)
+					{
+						if (recurse & GPMF_TOLERANT)
+							return GPMF_Next(ms, recurse);
+						else
+							return GPMF_ERROR_UNKNOWN_TYPE;
+					}
+					if (key == GPMF_KEY_DEVICE_ID && ms->pos + 2 < ms->buffer_size_longs)
 						ms->device_id = BYTESWAP32(ms->buffer[ms->pos + 2]);
 					if (key == GPMF_KEY_DEVICE_NAME)
 					{
@@ -365,7 +405,16 @@ GPMF_ERR GPMF_Next(GPMF_stream *ms, GPMF_LEVELS recurse)
 				// end of buffer
 				return GPMF_ERROR_BUFFER_END;
 			}
+			
 
+			size = (GPMF_DATA_SIZE(ms->buffer[ms->pos + 1]) >> 2);
+			if (GPMF_OK != IsValidSize(ms, size))
+			{
+				if (recurse & GPMF_TOLERANT && recurse & GPMF_RECURSE_LEVELS) // Skip this nest level as the sizes within this level are corrupt.
+					return SkipLevel(ms);
+				else
+					return GPMF_ERROR_BAD_STRUCTURE;
+			}
 			return GPMF_OK;
 		}
 		else
@@ -389,20 +438,27 @@ GPMF_ERR GPMF_FindNext(GPMF_stream *ms, uint32_t fourcc, GPMF_LEVELS recurse)
 
 		if (ms->pos < ms->buffer_size_longs)
 		{
-			while (0 == GPMF_Next(ms, recurse))
+			GPMF_ERR ret = GPMF_OK;
+			do
 			{
-				if (ms->buffer[ms->pos] == fourcc)
+				ret = GPMF_Next(ms, recurse);
+				if (GPMF_OK == ret)
 				{
-					return GPMF_OK; //found match
+					if (ms->buffer[ms->pos] == fourcc)
+					{
+						return GPMF_OK; //found match
+					}
 				}
-			}
+			} while (GPMF_OK == ret);
 
-			// restore read position
-			memcpy(ms, &prevstate, sizeof(GPMF_stream));
-			return GPMF_ERROR_FIND;
+			memcpy(ms, &prevstate, sizeof(GPMF_stream)); // restore read position		
+			return ret; // the error code returned from GPMF_Next()
 		}
+		else
+			return GPMF_ERROR_BUFFER_END;
 	}
-	return GPMF_ERROR_FIND;
+	else
+		return GPMF_ERROR_MEMORY;
 }
 
 GPMF_ERR GPMF_Reserved(uint32_t key)
@@ -449,6 +505,30 @@ GPMF_ERR GPMF_Reserved(uint32_t key)
 	if(key == GPMF_KEY_REMARK)
 		return GPMF_ERROR_RESERVED;
 
+	if (key == GPMF_KEY_MATRIX)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_ORIENTATION_IN)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_ORIENTATION_OUT)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_TIME_STAMP)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_TIME_STAMPS)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_PREFORMATTED)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_TEMPERATURE_C)
+		return GPMF_ERROR_RESERVED;
+
+	if (key == GPMF_KEY_FREESPACE)
+		return GPMF_ERROR_RESERVED;
+
 	return GPMF_OK;
 }
 
@@ -462,10 +542,10 @@ uint32_t GPMF_PayloadSampleCount(GPMF_stream *ms)
 		GPMF_stream find_stream;
 		GPMF_CopyState(ms, &find_stream);
 
-		if (GPMF_OK == GPMF_FindNext(&find_stream, fourcc, GPMF_CURRENT_LEVEL)) // Count the instances, not the repeats
+		if (GPMF_OK == GPMF_FindNext(&find_stream, fourcc, GPMF_CURRENT_LEVEL|GPMF_TOLERANT)) // Count the instances, not the repeats
 		{
 			count=2;
-			while (GPMF_OK == GPMF_FindNext(&find_stream, fourcc, GPMF_CURRENT_LEVEL))
+			while (GPMF_OK == GPMF_FindNext(&find_stream, fourcc, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				count++;
 			} 
@@ -488,19 +568,29 @@ GPMF_ERR GPMF_SeekToSamples(GPMF_stream *ms)
 	if (ms)
 	{
 
-		if (ms->pos+1 < ms->buffer_size_longs)
+		if (ms->pos + 1 < ms->buffer_size_longs)
 		{
+			GPMF_ERROR ret = GPMF_OK;
 			uint32_t size, type = GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]);
 
 			memcpy(&prevstate, ms, sizeof(GPMF_stream));
 
 			if (type == GPMF_TYPE_NEST)
-				GPMF_Next(ms, GPMF_RECURSE_LEVELS); // open STRM and recurse in
+				ret = GPMF_Next(ms, GPMF_RECURSE_LEVELS | GPMF_TOLERANT); // open STRM and recurse in
 
-			while (GPMF_OK == GPMF_Next(ms, GPMF_CURRENT_LEVEL))
+			if (GPMF_OK != ret)
 			{
-				if(ms->pos + 1 >= ms->buffer_size_longs)
+				memcpy(ms, &prevstate, sizeof(GPMF_stream));
+				return ret;
+			}
+
+			while (GPMF_OK == (ret = GPMF_Next(ms, GPMF_CURRENT_LEVEL | GPMF_TOLERANT)))
+			{
+				if (ms->pos + 1 >= ms->buffer_size_longs)
+				{
+					memcpy(ms, &prevstate, sizeof(GPMF_stream));
 					return GPMF_ERROR_BAD_STRUCTURE;
+				}
 
 				size = (GPMF_DATA_SIZE(ms->buffer[ms->pos + 1]) >> 2);
 				if (GPMF_OK != IsValidSize(ms, size))
@@ -510,7 +600,6 @@ GPMF_ERR GPMF_SeekToSamples(GPMF_stream *ms)
 				}
 
 				type = GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]);
-
 
 				if (type == GPMF_TYPE_NEST)  // Nest with-in nest
 				{
@@ -522,13 +611,18 @@ GPMF_ERR GPMF_SeekToSamples(GPMF_stream *ms)
 					uint32_t key = GPMF_Key(ms);
 
 					if (GPMF_ERROR_RESERVED == GPMF_Reserved(key))
+					{
+						memcpy(ms, &prevstate, sizeof(GPMF_stream));
 						return GPMF_ERROR_FIND;
-					
+					}
 					return GPMF_OK; //found match
 				}
 
 				if (ms->pos + size + 2 >= ms->buffer_size_longs)
+				{
+					memcpy(ms, &prevstate, sizeof(GPMF_stream));
 					return GPMF_ERROR_BAD_STRUCTURE;
+				}
 
 				if (ms->buffer[ms->pos] == ms->buffer[ms->pos + size + 2]) // Matching tags
 				{
@@ -538,10 +632,13 @@ GPMF_ERR GPMF_SeekToSamples(GPMF_stream *ms)
 
 			// restore read position
 			memcpy(ms, &prevstate, sizeof(GPMF_stream));
-			return GPMF_ERROR_FIND;
+			return ret;
 		}
+		else
+			return GPMF_ERROR_BUFFER_END;
 	}
-	return GPMF_ERROR_FIND;
+	else 
+		return GPMF_ERROR_MEMORY;
 }
 
 
@@ -570,19 +667,20 @@ GPMF_ERR GPMF_FindPrev(GPMF_stream *ms, uint32_t fourcc, GPMF_LEVELS recurse)
 
 						return GPMF_OK; //found match
 					}
-				} while (ms->last_seek[curr_level] > ms->pos && 0 == GPMF_Next(ms, GPMF_CURRENT_LEVEL));
+				} while (ms->last_seek[curr_level] > ms->pos && GPMF_OK == GPMF_Next(ms, GPMF_CURRENT_LEVEL|(recurse&GPMF_TOLERANT)));
 
 				curr_level--;
-			} while (recurse == GPMF_RECURSE_LEVELS && curr_level > 0);
+			} while (recurse & GPMF_RECURSE_LEVELS && curr_level > 0);
 
 			// restore read position
 			memcpy(ms, &prevstate, sizeof(GPMF_stream));
-
 			return GPMF_ERROR_FIND;
 		}
+		else
+			return GPMF_ERROR_BUFFER_END;
 	}
-
-	return GPMF_ERROR_FIND;
+	else
+		return GPMF_ERROR_MEMORY;
 }
 
 
@@ -640,7 +738,7 @@ uint32_t GPMF_ElementsInStruct(GPMF_stream *ms)
 
 		if (type != GPMF_TYPE_NEST && type != GPMF_TYPE_COMPLEX && type != GPMF_TYPE_COMPRESSED)
 		{
-			uint32_t tsize = GPMF_SizeofType(type);
+			uint32_t tsize = GPMF_SizeofType((GPMF_SampleType)type);
 			if (tsize > 0)
 				return ssize / tsize;
 			else
@@ -651,7 +749,7 @@ uint32_t GPMF_ElementsInStruct(GPMF_stream *ms)
 			GPMF_stream find_stream;
 			GPMF_CopyState(ms, &find_stream);
 
-			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_CURRENT_LEVEL))
+			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				char tmp[64] = "";
 				uint32_t tmpsize = sizeof(tmp);
@@ -666,7 +764,7 @@ uint32_t GPMF_ElementsInStruct(GPMF_stream *ms)
 		{
 			type = (GPMF_SampleType)GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 2]);
 			ssize = GPMF_SAMPLE_SIZE(ms->buffer[ms->pos + 2]);
-			uint32_t tsize = GPMF_SizeofType(type);
+			uint32_t tsize = GPMF_SizeofType((GPMF_SampleType)type);
 			if (tsize > 0)
 				return ssize / tsize;
 			else
@@ -726,7 +824,7 @@ uint32_t GPMF_ScaledDataSize(GPMF_stream *ms, GPMF_SampleType type)
 	{
 		uint32_t elements = GPMF_ElementsInStruct(ms);
 		uint32_t samples = GPMF_Repeat(ms);
-		return GPMF_SizeofType(type) * elements * samples;
+		return GPMF_SizeofType((GPMF_SampleType)type) * elements * samples;
 	}
 	return 0;
 }
@@ -866,7 +964,7 @@ GPMF_ERR GPMF_Modify(GPMF_stream* ms, uint32_t origfourCC, uint32_t newfourCC,
 		else
 		{
 			// search forward from the current position at this level
-			if (GPMF_OK == GPMF_FindNext(&fs, origfourCC, GPMF_CURRENT_LEVEL))
+			if (GPMF_OK == GPMF_FindNext(&fs, origfourCC, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				tsr = fs.buffer[fs.pos + 1];
 				ssize = GPMF_SAMPLE_SIZE(tsr);
@@ -883,7 +981,7 @@ GPMF_ERR GPMF_Modify(GPMF_stream* ms, uint32_t origfourCC, uint32_t newfourCC,
 				return GPMF_ERROR_BAD_STRUCTURE;  // sizes don't match
 			}
 			// search backward from the current position at this level
-			else if (GPMF_OK == GPMF_FindPrev(&fs, origfourCC, GPMF_CURRENT_LEVEL))
+			else if (GPMF_OK == GPMF_FindPrev(&fs, origfourCC, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				tsr = fs.buffer[fs.pos + 1];
 				ssize = GPMF_SAMPLE_SIZE(tsr);
@@ -903,7 +1001,7 @@ GPMF_ERR GPMF_Modify(GPMF_stream* ms, uint32_t origfourCC, uint32_t newfourCC,
 			{
 				// search from the beginning through all levels
 				GPMF_ResetState(&fs);
-				if (GPMF_OK == GPMF_FindNext(&fs, origfourCC, GPMF_RECURSE_LEVELS))
+				if (GPMF_OK == GPMF_FindNext(&fs, origfourCC, GPMF_RECURSE_LEVELS|GPMF_TOLERANT))
 				{ 
 					tsr = fs.buffer[fs.pos + 1];
 					ssize = GPMF_SAMPLE_SIZE(tsr);
@@ -1100,7 +1198,7 @@ GPMF_ERR GPMF_FormattedData(GPMF_stream *ms, void *buffer, uint32_t buffersize, 
 			GPMF_stream find_stream;
 			GPMF_CopyState(ms, &find_stream);
 
-			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_RECURSE_LEVELS))
+			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_RECURSE_LEVELS|GPMF_TOLERANT))
 			{
 				char *data1 = (char *)GPMF_RawData(&find_stream);
 				uint32_t size = GPMF_RawDataSize(&find_stream);
@@ -1381,6 +1479,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 		uint32_t sample_size = GPMF_SAMPLE_SIZE(ms->buffer[ms->pos + 1]);
 		uint32_t output_sample_size = GPMF_SizeofType(outputType);
 		uint32_t remaining_sample_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 1]);
+		uint32_t total_sample_data_bytes = remaining_sample_size;
 		GPMF_SampleType type = (GPMF_SampleType)GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]);
 		char complextype[64] = "L";
 		uint32_t inputtypesize = 0;
@@ -1422,6 +1521,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 			uint32_t samples = GPMF_Repeat(ms);
 
 			remaining_sample_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 2]);
+			total_sample_data_bytes = remaining_sample_size;
 
 			uncompressedSamples = (uint32_t *)malloc(neededunc + 12);
 			if (uncompressedSamples)
@@ -1466,7 +1566,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 			if (remaining_sample_size < sample_size * read_samples)
 				return GPMF_ERROR_MEMORY;
 
-			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_RECURSE_LEVELS))
+			if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TYPE, GPMF_RECURSE_LEVELS|GPMF_TOLERANT))
 			{
 				char *data1 = (char *)GPMF_RawData(&find_stream);
 				uint32_t size = GPMF_RawDataSize(&find_stream);
@@ -1494,7 +1594,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 				return GPMF_ERROR_MEMORY;
 
 			complextype[0] = type;
-			inputtypesize = GPMF_SizeofType((GPMF_SampleType) type);
+			inputtypesize = GPMF_SizeofType((GPMF_SampleType)type);
 			if (inputtypesize == 0)
 				return GPMF_ERROR_MEMORY;
 			inputtypeelements = 1;
@@ -1502,8 +1602,16 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 		}
 
 		if (output_sample_size * elements * read_samples > buffersize)
-			return GPMF_ERROR_MEMORY;
+		{
+			ret = GPMF_ERROR_MEMORY;
+			goto cleanup;
+		}
 
+		if (read_samples * sample_size > total_sample_data_bytes)
+		{
+			ret = GPMF_ERROR_MEMORY;
+			goto cleanup;
+		}
 
 		switch (outputType)	{
 		case GPMF_TYPE_SIGNED_BYTE:
@@ -1519,7 +1627,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 			GPMF_stream fs;
 			GPMF_CopyState(ms, &fs);
 
-			if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_SCALE, GPMF_CURRENT_LEVEL))
+			if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_SCALE, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				scal_data = (uint32_t *)GPMF_RawData(&fs);
 				scal_type = GPMF_SAMPLE_TYPE(fs.buffer[fs.pos + 1]);
@@ -1550,7 +1658,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 					scal_data = (uint32_t *)scal_buffer;
 					break;
 				default:
-					return GPMF_ERROR_TYPE_NOT_SUPPORTED;
+					return GPMF_ERROR_SCALE_NOT_SUPPORTED;
 					break;
 				}
 			}
@@ -1563,7 +1671,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 			}
 
 			GPMF_CopyState(ms, &fs);
-			if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_MATRIX, GPMF_CURRENT_LEVEL))
+			if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_MATRIX, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 			{
 				uint32_t mtrx_found_size = 0;
 				uint32_t matrix_size = elements * elements;
@@ -1594,7 +1702,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 					mtrx_data = (uint32_t *)mtrx_buffer;
 					break;
 				default:
-					return GPMF_ERROR_TYPE_NOT_SUPPORTED;
+					return GPMF_ERROR_SCALE_NOT_SUPPORTED;
 					break;
 				}
 
@@ -1614,13 +1722,13 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 			if (!mtrx_calibration)
 			{
 				GPMF_CopyState(ms, &fs);
-				if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_ORIENTATION_IN, GPMF_CURRENT_LEVEL))
+				if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_ORIENTATION_IN, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 				{
 					orin_data = (char *)GPMF_RawData(&fs);
 					orin_len = GPMF_DATA_PACKEDSIZE(fs.buffer[fs.pos + 1]);
 				}
 				GPMF_CopyState(ms, &fs);
-				if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_ORIENTATION_OUT, GPMF_CURRENT_LEVEL))
+				if (GPMF_OK == GPMF_FindPrev(&fs, GPMF_KEY_ORIENTATION_OUT, GPMF_CURRENT_LEVEL|GPMF_TOLERANT))
 				{
 					orio_data = (char *)GPMF_RawData(&fs);
 					orio_len = GPMF_DATA_PACKEDSIZE(fs.buffer[fs.pos + 1]);
@@ -1628,6 +1736,8 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 				if (orio_len == orin_len && orin_len > 1 && orio_len == elements)
 				{
 					uint32_t x, y, pos = 0;
+
+					mtrx_data = (uint32_t*)mtrx_buffer;
 					mtrx_type = outputType;
 
 					for (y = 0; y < elements; y++)
@@ -1647,7 +1757,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 							case GPMF_TYPE_SIGNED_64BIT_INT:  MACRO_SET_MATRIX(int64_t,   orio_data[y], orin_data[x], pos);  break;
 							case GPMF_TYPE_UNSIGNED_64BIT_INT: MACRO_SET_MATRIX(uint64_t, orio_data[y], orin_data[x], pos);  break;
 							default:
-								ret = GPMF_ERROR_TYPE_NOT_SUPPORTED;
+								ret = GPMF_ERROR_SCALE_NOT_SUPPORTED;
 								goto cleanup;
 								break;
 							}
@@ -1658,24 +1768,14 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 
 					mtrx_calibration = 1;
 				}
-
 			}
 		}
 
-
-		size_t bufferlimt = (size_t)buffer;
-		bufferlimt += buffersize;
 
 		while (read_samples--)
 		{
 			uint32_t i;
 			uint8_t *scal_data8 = (uint8_t *)scal_data;
-
-			if((size_t)output > bufferlimt - output_sample_size*elements)
-			{
-				ret = GPMF_ERROR_MEMORY;
-				goto cleanup;
-			}
 
 			for (i = 0; i < elements; i++)
 			{
@@ -1699,7 +1799,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 					case GPMF_TYPE_SIGNED_64BIT_INT:  MACRO_NOSWAP_CAST_SCALE(int64_t) break;
 					case GPMF_TYPE_UNSIGNED_64BIT_INT:  MACRO_NOSWAP_CAST_UNSIGNED_SCALE(uint64_t) break;
 					default:
-						ret = GPMF_ERROR_TYPE_NOT_SUPPORTED;
+						ret = GPMF_ERROR_SCALE_NOT_SUPPORTED;
 						goto cleanup;
 						break;
 					}
@@ -1718,7 +1818,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 					case GPMF_TYPE_SIGNED_64BIT_INT:  MACRO_BSWAP_CAST_SCALE(BYTESWAP64, int64_t, uint64_t) break;
 					case GPMF_TYPE_UNSIGNED_64BIT_INT:  MACRO_BSWAP_CAST_UNSIGNED_SCALE(BYTESWAP64, uint64_t, uint64_t) break;
 					default:
-						ret = GPMF_ERROR_TYPE_NOT_SUPPORTED;
+						ret = GPMF_ERROR_SCALE_NOT_SUPPORTED;
 						goto cleanup;
 						break;
 					}
@@ -1750,7 +1850,7 @@ GPMF_ERR GPMF_ScaledData(GPMF_stream *ms, void *buffer, uint32_t buffersize, uin
 		break;
 
 		default:
-			ret = GPMF_ERROR_TYPE_NOT_SUPPORTED;
+			ret = GPMF_ERROR_SCALE_NOT_SUPPORTED;
 			goto cleanup;
 			break;
 		}
@@ -1797,12 +1897,15 @@ GPMF_ERR GPMF_Decompress(GPMF_stream *ms, uint32_t *localbuf, uint32_t localbuf_
 		uint16_t *compressed_data;
 		uint32_t sample_size = GPMF_SAMPLE_SIZE(ms->buffer[ms->pos + 2]);
 		uint32_t sizeoftype = GPMF_SizeofType(type);
-		if (sizeoftype == 0)
+		if(sizeoftype == 0) 
+			return GPMF_ERROR_MEMORY;
+		uint32_t chn = 0, channels = sample_size / sizeoftype;
+		uint32_t compressed_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 1]);
+		uint32_t uncompressed_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 2]);
+
+		if (sizeoftype == 0 && localbuf_size < uncompressed_size)
 			return GPMF_ERROR_MEMORY;
 
-		uint32_t chn = 0, channels = sample_size / sizeoftype;
-		//uint32_t compressed_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 1]);
-		uint32_t uncompressed_size = GPMF_DATA_PACKEDSIZE(ms->buffer[ms->pos + 2]);
 		int signed_type = 1;
 
 		GPMF_codebook *cb = (GPMF_codebook *)ms->cbhandle;
@@ -1830,7 +1933,7 @@ GPMF_ERR GPMF_Decompress(GPMF_stream *ms, uint32_t *localbuf, uint32_t localbuf_
 		int32_t last;
 		uint32_t pos, end = 0;
 
-		if(sample_size > localbuf_size)
+		if(sample_size > compressed_size)
 			return GPMF_ERROR_MEMORY;
 			
 		memcpy(&buf_u8[0], start, sample_size);
@@ -1855,7 +1958,7 @@ GPMF_ERR GPMF_Decompress(GPMF_stream *ms, uint32_t *localbuf, uint32_t localbuf_
 						
 			sOffset = ((sOffset + 1) & (uint32_t)~1); //16-bit aligned compressed data
 
-			if (sOffset >= localbuf_size)
+			if (sOffset >= compressed_size)
 				return GPMF_ERROR_MEMORY;
 
 			compressed_data = (uint16_t *)&start[sOffset];
@@ -1951,7 +2054,7 @@ GPMF_ERR GPMF_Decompress(GPMF_stream *ms, uint32_t *localbuf, uint32_t localbuf_
 							nextBits -= needed;
 							if (nextBits <= 0)
 							{
-								if(((size_t)compressed_data - (size_t)start) >= localbuf_size) 
+								if(((size_t)compressed_data - (size_t)start) >= compressed_size)
 									return GPMF_ERROR_MEMORY;
 								nextWord = BYTESWAP16(*compressed_data);
 								compressed_data++;
@@ -2011,7 +2114,7 @@ GPMF_ERR GPMF_Decompress(GPMF_stream *ms, uint32_t *localbuf, uint32_t localbuf_
 					nextBits -= needed;
 					if (nextBits <= 0)
 					{
-						if (((size_t)compressed_data - (size_t)start) >= localbuf_size)
+						if (((size_t)compressed_data - (size_t)start) >= compressed_size)
 							return GPMF_ERROR_MEMORY;
 						nextWord = BYTESWAP16(*compressed_data);
 						compressed_data++;

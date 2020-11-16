@@ -20,16 +20,19 @@ endif()
 include_directories(${FMPEG_INCLUDE_DIRS}
                     ${OpenCV_INCLUDE_DIRS}
 #                    ${SDL2_INCLUDE_DIRS}
-                    utils/include
                     )
 
+include_directories(utils/include)
 add_subdirectory(utils)
-add_executable(video_synchronization main.cpp)
-target_link_libraries(video_synchronization ${FFMPEG_LIBRARIES} ${OpenCV_LIBS}  utils)
-#target_link_libraries(video_synchronization ${FFMPEG_LIBRARIES} ${OpenCV_LIBS} ${SDL2_LIBRARIES} utils)
 
 include_directories(gpmf-parser/include)
 add_subdirectory(gpmf-parser)
 
-add_executable(extract_imu extract_imu.cpp)
-target_link_libraries(extract_imu gpmf-parser)
+include_directories(gopro_extract/include)
+add_subdirectory(gopro_extract)
+
+add_executable(gopro_to_asl gopro_to_asl.cpp)
+target_link_libraries(gopro_to_asl ${FFMPEG_LIBRARIES} ${OpenCV_LIBS}  utils gpmf-parser gopro_extract -lstdc++fs)
+
+#add_executable(demo GPMF_demo.c)
+#target_link_libraries(demo utils gpmf-parser gopro_extract -lstdc++fs)

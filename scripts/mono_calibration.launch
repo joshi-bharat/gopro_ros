@@ -1,0 +1,7 @@
+<launch>
+    <arg name="bagfile"  default="/home/bjoshi/gopro_to_rosbag/gopro7_camera_calibration.bag"/>
+    <node name="bag_play" pkg="rosbag" type="play" args="$(arg bagfile) --clock" output="screen"/>
+    <node name="republish" pkg="image_transport" type="republish" args="compressed
+    in:=/gopro/image raw out:=/gopro/image"/>
+
+</launch>
