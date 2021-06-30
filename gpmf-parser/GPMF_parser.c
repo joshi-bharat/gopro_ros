@@ -75,7 +75,7 @@ GPMF_ERR GPMF_Validate(GPMF_stream *ms, GPMF_LEVELS recurse)
 {
 	if (ms)
 	{
-		GPMF_ERROR ret = GPMF_OK;
+		GPMF_ERR ret = GPMF_OK;
 		uint32_t currpos = ms->pos;
 		uint32_t nestsize = ms->nest_size[ms->nest_level];
 		if (nestsize == 0 && ms->nest_level == 0)
@@ -570,7 +570,7 @@ GPMF_ERR GPMF_SeekToSamples(GPMF_stream *ms)
 
 		if (ms->pos + 1 < ms->buffer_size_longs)
 		{
-			GPMF_ERROR ret = GPMF_OK;
+			GPMF_ERR ret = GPMF_OK;
 			uint32_t size, type = GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]);
 
 			memcpy(&prevstate, ms, sizeof(GPMF_stream));

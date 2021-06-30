@@ -2,9 +2,6 @@
 // Created by bjoshi on 10/29/20.
 //
 
-#ifndef EXTRACT_IMU_H
-#define EXTRACT_IMU_H
-
 #pragma once
 
 #include <cstdlib>
@@ -19,16 +16,18 @@
 #include "GPMF_mp4reader.h"
 #include "color_codes.h"
 
-class GoProIMUExtractor{
+class GoProIMUExtractor
+{
 
 private:
-    char* video;
+    char *video;
     GPMF_stream metadata_stream;
     GPMF_stream *ms;
     double metadatalength;
     size_t mp4;
     uint32_t payloads;
-    uint32_t* payload = NULL;
+    uint32_t *payload = NULL;
+    size_t payloadres = 0;
 
 public:
     GoProIMUExtractor(const std::string file);
@@ -39,7 +38,4 @@ public:
     int save_imu_stream(std::string file);
     uint64_t get_stamp(uint32_t fourcc);
     GPMF_ERR show_current_payload(uint32_t index);
-
 };
-
-#endif //EXTRACT_IMU_H
