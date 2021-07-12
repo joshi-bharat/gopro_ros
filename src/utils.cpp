@@ -2,12 +2,13 @@
 // Created by bjoshi on 8/26/20.
 //
 #include <chrono>
-#include "include/utils.h"
+#include "utils.h"
 #include <iostream>
 #include "date.h"
 #include <sstream>
 
-uint64_t parseISO(const std::string& iso_date) {
+uint64_t parseISO(const std::string &iso_date)
+{
 
 	using namespace date;
 	using namespace std::chrono;
@@ -28,16 +29,18 @@ uint64_t parseISO(const std::string& iso_date) {
 	return time;
 }
 
-std::string uint64_to_string(uint64_t value){
+std::string uint64_to_string(uint64_t value)
+{
 	std::ostringstream os;
 	os << value;
 	return os.str();
 }
 
-uint64_t get_offset_1904(){
-    using namespace date;
-    using namespace std::chrono;
-    constexpr auto offset = sys_days{January/1/1970} - sys_days{January/1/1904};
-    uint64_t offset_secs = duration_cast<seconds>(offset).count();
-    return offset_secs;
+uint64_t get_offset_1904()
+{
+	using namespace date;
+	using namespace std::chrono;
+	constexpr auto offset = sys_days{January / 1 / 1970} - sys_days{January / 1 / 1904};
+	uint64_t offset_secs = duration_cast<seconds>(offset).count();
+	return offset_secs;
 }

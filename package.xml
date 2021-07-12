@@ -1,0 +1,17 @@
+<package format="2">
+    <name>gopro_ros</name>
+    <version>0.0.1</version>
+    <description> GoPro Video information extractor. </description>
+    <maintainer email="bjoshi@email.sc.edu">Bharat Joshi</maintainer>
+    <license>BSD</license>
+    <author email="bjoshi@email.sc.edu">Bharat Joshi</author>
+
+    <buildtool_depend>catkin</buildtool_depend>
+    
+    <depend>sensor_msgs</depend>
+    <depend>geometry_msgs</depend>
+    <depend>roscpp</depend>
+    
+    <exec_depend>rospy</exec_depend>
+
+</package>

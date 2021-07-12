@@ -2,8 +2,8 @@
 // Created by bjoshi on 10/29/20.
 //
 
-#include "gopro_extract/include/extract_video.h"
-#include "gopro_extract/include/extract_imu.h"
+#include "extract_video.h"
+#include "extract_imu.h"
 
 #include "color_codes.h"
 
