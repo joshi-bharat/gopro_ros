@@ -2,8 +2,8 @@
 // Created by bjoshi on 10/29/20.
 //
 
-#include "extract_video.h"
-#include "extract_imu.h"
+#include "VideoExtractor.h"
+#include "ImuExtractor.h"
 
 #include "color_codes.h"
 

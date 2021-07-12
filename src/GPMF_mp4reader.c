@@ -343,9 +343,9 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype, in
 					if (qttag == MAKEID('m', 'v', 'h', 'd')) //mvhd  movie header
 					{
 						len = fread(&skip, 1, 4, mp4->mediafp);
-						len += fread(&skip, 1, 4, mp4->mediafp);
 						len += fread(&mp4->movie_creation_time, 1, 4, mp4->mediafp);
 						mp4->movie_creation_time = BYTESWAP32(mp4->movie_creation_time);
+						len += fread(&skip, 1, 4, mp4->mediafp);
 						len += fread(&mp4->clockdemon, 1, 4, mp4->mediafp);
 						mp4->clockdemon = BYTESWAP32(mp4->clockdemon);
 						len += fread(&mp4->clockcount, 1, 4, mp4->mediafp);

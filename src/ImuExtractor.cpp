@@ -19,7 +19,7 @@
  *
  */
 
-#include "extract_imu.h"
+#include "ImuExtractor.h"
 #include "utils.h"
 #include <fstream>
 #include <iomanip>
