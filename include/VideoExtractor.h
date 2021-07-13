@@ -16,6 +16,7 @@ extern "C"
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 class GoProVideoExtractor
 {
@@ -35,4 +36,6 @@ public:
     void save_raw(AVFrame *pFrame, int width, int height, std::string filename);
 
     int extract_frames(const std::string &base_folder, int width, int height);
+
+    int getFrameStamps(std::vector<uint64_t> &stamps);
 };

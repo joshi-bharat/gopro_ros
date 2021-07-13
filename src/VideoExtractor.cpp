@@ -329,3 +329,187 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 
 	return 0;
 }
+
+int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
+{
+	stamps.clear();
+
+	av_register_all();
+
+	AVFormatContext *pFormatContext = NULL;
+	int i, videoStreamIndex;
+	AVCodecContext *pCodecContext = NULL;
+	AVCodec *pCodec = NULL;
+	AVFrame *pFrame = NULL;
+	AVFrame *pFrameRGB = NULL;
+	AVPacket packet;
+	int frameFinished;
+	int numBytes;
+	uint8_t *buffer = NULL;
+
+	AVDictionary *optionsDict = NULL;
+	AVDictionaryEntry *tag_dict = NULL;
+	struct SwsContext *sws_ctx = NULL;
+	AVStream *video_stream = NULL;
+
+	// Open video file
+	std::cout << "Opening Video File: " << video_file << std::endl;
+	pFormatContext = avformat_alloc_context();
+	if (!pFormatContext)
+	{
+		printf("ERROR could not allocate memory for Format Context");
+		return -1;
+	}
+
+	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
+	{
+		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
+		return -1;
+	}
+	// Retrieve stream information
+	if (avformat_find_stream_info(pFormatContext, NULL) < 0)
+		return -1; // Couldn't find stream information
+
+	// Dump information about file onto standard error
+	av_dump_format(pFormatContext, 0, video_file.c_str(), 0);
+
+	AVCodecParameters *codecParameters;
+
+	// Find the first video stream
+	videoStreamIndex = -1;
+	for (i = 0; i < pFormatContext->nb_streams; i++)
+	{
+		codecParameters = pFormatContext->streams[i]->codecpar;
+		if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+			videoStreamIndex = i;
+			break;
+		}
+	}
+
+	if (videoStreamIndex == -1)
+		return -1; // Didn't find a video stream
+
+	// Get a pointer to the codec context for the video stream
+	pCodec = avcodec_find_decoder(pFormatContext->streams[videoStreamIndex]->codecpar->codec_id);
+	video_stream = pFormatContext->streams[videoStreamIndex];
+
+	// Find the decoder for the video stream
+	if (pCodec == nullptr)
+	{
+		fprintf(stderr, "Unsupported codec!\n");
+		return -1; // Codec not found
+	}
+
+	pCodecContext = avcodec_alloc_context3(pCodec);
+	if (!pCodecContext)
+	{
+		printf("failed to allocated memory for AVCodecContext");
+		return -1;
+	}
+	if (avcodec_parameters_to_context(pCodecContext, codecParameters) < 0)
+	{
+		printf("failed to copy codec params to codec context");
+		return -1;
+	}
+
+	// Open codec
+	if (avcodec_open2(pCodecContext, pCodec, &optionsDict) < 0)
+		return -1; // Could not open codec
+
+	// Allocate video frame
+	pFrame = av_frame_alloc();
+
+	// Allocate an AVFrame structure
+	pFrameRGB = av_frame_alloc();
+	if (pFrameRGB == nullptr)
+		return -1;
+
+	//PIX_FMT_RGB24
+	// Determine required buffer size and allocate buffer
+
+	int width = 100, height = 100;
+	numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
+										height, 1);
+	buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+
+	sws_ctx =
+		sws_getContext(
+			pCodecContext->width,
+			pCodecContext->height,
+			pCodecContext->pix_fmt,
+			width,
+			height,
+			AV_PIX_FMT_RGB24,
+			SWS_BILINEAR,
+			nullptr,
+			nullptr,
+			nullptr);
+	//
+	// Assign appropriate parts of buffer to image planes in pFrameRGB
+	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
+	// of AVPicture
+	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
+						 width, height, 1);
+
+	double global_clock;
+	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
+
+	while (av_read_frame(pFormatContext, &packet) >= 0)
+	{
+		// Is this a packet from the video stream?
+		if (packet.stream_index == videoStreamIndex)
+		{
+			// Decode video frame
+			//			avcodec_send_packet(pCodecContext, &packet);
+			//			frameFinished = avcodec_receive_frame(pCodecContext, pFrameRGB);
+			avcodec_decode_video2(pCodecContext, pFrame, &frameFinished,
+								  &packet);
+
+			// Did we get a video frame?
+
+			if (packet.dts != AV_NOPTS_VALUE)
+			{
+				global_clock = av_frame_get_best_effort_timestamp(pFrame);
+				global_video_pkt_pts = packet.pts;
+			}
+			else if (global_video_pkt_pts && global_video_pkt_pts != AV_NOPTS_VALUE)
+			{
+				global_clock = global_video_pkt_pts;
+			}
+			else
+			{
+				global_clock = 0;
+			}
+
+			double frame_delay = av_q2d(video_stream->time_base);
+			global_clock *= frame_delay;
+
+			//Only if we are repeating the
+			if (pFrame->repeat_pict > 0)
+			{
+				double extra_delay = pFrame->repeat_pict * (frame_delay * 0.5);
+				global_clock += extra_delay;
+			}
+
+			uint64_t usecs = (uint64_t)(global_clock * 1000000);
+			// std::cout << "Stamp: " << usecs << std::endl;
+			stamps.push_back(usecs);
+		}
+	}
+
+	// Free the RGB image
+	av_free(buffer);
+	av_free(pFrameRGB);
+
+	// Free the YUV frame
+	av_free(pFrame);
+
+	// Close the codec
+	avcodec_close(pCodecContext);
+
+	// Close the video file
+	avformat_close_input(&pFormatContext);
+
+	return 0;
+}

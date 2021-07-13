@@ -29,9 +29,10 @@ extern void PrintGPMF(GPMF_stream *ms);
 
 using namespace std;
 
-GoProIMUExtractor::GoProIMUExtractor(const std::string file)
+GoProImuExtractor::GoProImuExtractor(const std::string file)
 {
-    strcpy(video, file.c_str());
+    video = const_cast<char *>(file.c_str());
+
     ms = &metadata_stream;
     mp4 = OpenMP4Source(video, MOV_GPMF_TRAK_TYPE, MOV_GPMF_TRAK_SUBTYPE, 0);
     if (mp4 == 0)
@@ -43,10 +44,11 @@ GoProIMUExtractor::GoProIMUExtractor(const std::string file)
     if (metadatalength > 0.0)
     {
         payloads = GetNumberPayloads(mp4);
+        // payloads = payloads - 1; // Discarding the last payload. Found that payload is not reliable as others
     }
 }
 
-bool GoProIMUExtractor::display_video_framerate()
+bool GoProImuExtractor::display_video_framerate()
 {
     uint32_t fr_num, fr_dem;
     uint32_t frames = GetVideoFrameRateAndCount(mp4, &fr_num, &fr_dem);
@@ -61,7 +63,7 @@ bool GoProIMUExtractor::display_video_framerate()
     }
 }
 
-void GoProIMUExtractor::cleanup()
+void GoProImuExtractor::cleanup()
 {
     if (payloadres)
         FreePayloadResource(mp4, payloadres);
@@ -72,7 +74,7 @@ void GoProIMUExtractor::cleanup()
     CloseSource(mp4);
 }
 
-void GoProIMUExtractor::show_gpmf_structure()
+void GoProImuExtractor::show_gpmf_structure()
 {
     uint32_t payload_size;
     GPMF_ERR ret = GPMF_OK;
@@ -137,7 +139,7 @@ void GoProIMUExtractor::show_gpmf_structure()
  * @return
  */
 
-GPMF_ERR GoProIMUExtractor::get_scaled_data(uint32_t fourcc, vector<vector<double>> &readings)
+GPMF_ERR GoProImuExtractor::get_scaled_data(uint32_t fourcc, vector<vector<double>> &readings)
 {
 
     while (GPMF_OK == GPMF_FindNext(ms, STR2FOURCC("STRM"), static_cast<GPMF_LEVELS>(GPMF_RECURSE_LEVELS | GPMF_TOLERANT))) //GoPro Hero5/6/7 Accelerometer)
@@ -185,7 +187,7 @@ GPMF_ERR GoProIMUExtractor::get_scaled_data(uint32_t fourcc, vector<vector<doubl
  * @return timestmamp
  */
 
-uint64_t GoProIMUExtractor::get_stamp(uint32_t fourcc)
+uint64_t GoProImuExtractor::get_stamp(uint32_t fourcc)
 {
     GPMF_stream find_stream;
 
@@ -204,7 +206,7 @@ uint64_t GoProIMUExtractor::get_stamp(uint32_t fourcc)
     return timestamp;
 }
 
-GPMF_ERR GoProIMUExtractor::show_current_payload(uint32_t index)
+GPMF_ERR GoProImuExtractor::show_current_payload(uint32_t index)
 {
 
     uint32_t payload_size;
@@ -235,7 +237,7 @@ GPMF_ERR GoProIMUExtractor::show_current_payload(uint32_t index)
     GPMF_ResetState(ms);
 }
 
-int GoProIMUExtractor::save_imu_stream(std::string imu_file)
+int GoProImuExtractor::save_imu_stream(std::string imu_file)
 {
 
     ofstream imu_stream;
@@ -383,4 +385,52 @@ int GoProIMUExtractor::save_imu_stream(std::string imu_file)
     std::cout << GREEN << "Wrote " << total_samples << " imu samples to file" << RESET << endl;
     imu_stream.close();
     CloseSource(mp4);
+}
+
+uint32_t GoProImuExtractor::getNumofSamples(uint32_t fourcc)
+{
+    GPMF_stream find_stream;
+
+    uint32_t total_samples;
+    while (GPMF_OK == GPMF_FindNext(ms, STR2FOURCC("STRM"), static_cast<GPMF_LEVELS>(GPMF_RECURSE_LEVELS | GPMF_TOLERANT))) //GoPro Hero5/6/7 Accelerometer)
+    {
+        if (GPMF_OK != GPMF_FindNext(ms, fourcc, static_cast<GPMF_LEVELS>(GPMF_RECURSE_LEVELS | GPMF_TOLERANT)))
+            continue;
+
+        GPMF_CopyState(ms, &find_stream);
+        if (GPMF_OK == GPMF_FindPrev(&find_stream, GPMF_KEY_TOTAL_SAMPLES,
+                                     static_cast<GPMF_LEVELS>(GPMF_CURRENT_LEVEL | GPMF_TOLERANT)))
+            total_samples = BYTESWAP32(*(uint32_t *)GPMF_RawData(&find_stream));
+    }
+    GPMF_ResetState(ms);
+    return total_samples;
+}
+
+void GoProImuExtractor::getFrameStamps(std::vector<uint64_t> &start_stamps, std::vector<uint32_t> &samples)
+{
+    start_stamps.clear();
+    samples.clear();
+
+    for (uint32_t index = 0; index < payloads; index++)
+    {
+        GPMF_ERR ret;
+        uint32_t payload_size;
+
+        payload_size = GetPayloadSize(mp4, index);
+        payloadres = GetPayloadResource(mp4, payloadres, payload_size);
+        payload = GetPayload(mp4, payloadres, index);
+
+        if (payload == NULL)
+            cleanup();
+        ret = GPMF_Init(ms, payload, payload_size);
+        if (ret != GPMF_OK)
+            cleanup();
+
+        uint64_t stamp = get_stamp(STR2FOURCC("CORI"));
+        uint32_t total_samples = getNumofSamples(STR2FOURCC("CORI"));
+
+        cout << RED << "Stamp: " << stamp << "\tSamples: " << total_samples << RESET << endl;
+        start_stamps.push_back(stamp);
+        samples.push_back(total_samples);
+    }
 }

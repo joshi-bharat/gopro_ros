@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     }
 
     string imu_file = imu_folder + "/data.csv";
-    GoProIMUExtractor imu_extractor(video_file);
+    GoProImuExtractor imu_extractor(video_file);
     imu_extractor.display_video_framerate();
     imu_extractor.show_gpmf_structure();
     imu_extractor.save_imu_stream(imu_file);

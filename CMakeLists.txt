@@ -37,10 +37,10 @@ file(GLOB c_src "src/*.c")
 file(GLOB cpp_src "src/*.cpp")
 
 add_library(${PROJECT_NAME} SHARED ${c_src} ${cpp_src})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${FFMPEG_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${FFMPEG_LIBRARIES} ${OpenCV_LIBS} ${catkin_LIBRARIES} -lstdc++fs)
 
 add_executable(gopro_to_asl gopro_to_asl.cpp)
-target_link_libraries(gopro_to_asl ${PROJECT_NAME} -lstdc++fs)
+target_link_libraries(gopro_to_asl ${PROJECT_NAME} )
 
 add_executable(image_stamp_test test_image_stamps.cpp)
 target_link_libraries(image_stamp_test ${PROJECT_NAME})

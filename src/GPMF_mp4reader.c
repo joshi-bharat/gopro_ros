@@ -31,7 +31,7 @@
 #include "GPMF_mp4reader.h"
 #include "GPMF_common.h"
 
-#define PRINT_MP4_STRUCTURE 1
+#define PRINT_MP4_STRUCTURE 0
 
 #ifdef _WINDOWS
 #define LONGTELL _ftelli64
@@ -423,6 +423,7 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype, in
 							{
 								len += fread(&readnum, 1, 4, mp4->mediafp);
 								readnum = BYTESWAP32(readnum);
+								// printf("num_of_entries: %d \t size: %d\n", readnum, qtsize);
 								if (readnum <= (qtsize / 12) && mp4->trak_clockdemon)
 								{
 									uint32_t segment_duration;	//integer that specifies the duration of this edit segment in units of the movieÂs time scale.
@@ -710,7 +711,6 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype, in
 
 						NESTSIZE(qtsize);
 					}
-
 					else if (qttag == MAKEID('c', 'o', '6', '4')) // metadata stco - offsets
 					{
 						if (type == traktype) // meta
