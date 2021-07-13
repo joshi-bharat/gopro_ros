@@ -24,11 +24,26 @@ class GoProVideoExtractor
 private:
     std::string video_file;
 
+    // Video properties
+    AVFormatContext *pFormatContext = NULL;
+    uint32_t videoStreamIndex;
+    AVCodecContext *pCodecContext = NULL;
+    AVCodec *pCodec = NULL;
+    AVFrame *pFrame = NULL;
+    AVFrame *pFrameRGB = NULL;
+    AVPacket packet;
+
+    AVDictionary *optionsDict = NULL;
+    AVDictionaryEntry *tag_dict = NULL;
+    struct SwsContext *sws_ctx = NULL;
+    AVStream *video_stream = NULL;
+    AVCodecParameters *codecParameters;
+
+    std::string video_creation_time;
+
 public:
-    GoProVideoExtractor(std::string file)
-    {
-        video_file = file;
-    }
+    GoProVideoExtractor(std::string file);
+    ~GoProVideoExtractor();
 
     void save_to_png(AVFrame *frame, AVCodecContext *codecContext, int width, int height,
                      AVRational time_base, std::string filename);

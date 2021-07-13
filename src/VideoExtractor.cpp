@@ -30,6 +30,109 @@
 #include <experimental/filesystem>
 #include <iomanip>
 
+GoProVideoExtractor::GoProVideoExtractor(std::string filename)
+{
+	video_file = filename;
+
+	av_register_all();
+
+	// Open video file
+	std::cout << "Opening Video File: " << video_file << std::endl;
+	pFormatContext = avformat_alloc_context();
+	if (!pFormatContext)
+	{
+		printf("ERROR could not allocate memory for Format Context");
+	}
+
+	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
+	{
+		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
+	}
+	// Retrieve stream information
+	if (avformat_find_stream_info(pFormatContext, NULL) < 0)
+		std::cout << RED << "Couldn't find stream information" << RESET << std::endl;
+
+	// Dump information about file onto standard error
+	av_dump_format(pFormatContext, 0, video_file.c_str(), 0);
+
+	// Find the first video stream
+	videoStreamIndex = -1;
+	for (uint32_t i = 0; i < pFormatContext->nb_streams; i++)
+	{
+		codecParameters = pFormatContext->streams[i]->codecpar;
+		if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO)
+		{
+
+			tag_dict = av_dict_get(pFormatContext->metadata, "", tag_dict, AV_DICT_IGNORE_SUFFIX);
+			while (tag_dict)
+			{
+				if (strcmp(tag_dict->key, "creation_time") == 0)
+				{
+					std::stringstream ss;
+					ss << tag_dict->value;
+					ss >> video_creation_time;
+				}
+				tag_dict = av_dict_get(pFormatContext->metadata, "", tag_dict, AV_DICT_IGNORE_SUFFIX);
+			}
+
+			videoStreamIndex = i;
+			break;
+		}
+	}
+
+	if (videoStreamIndex == -1)
+		std::cout << RED << "Didn't find a video stream" << RESET << std::endl;
+
+	// Get a pointer to the codec context for the video stream
+	pCodec = avcodec_find_decoder(pFormatContext->streams[videoStreamIndex]->codecpar->codec_id);
+
+	// Find the decoder for the video stream
+	if (pCodec == nullptr)
+	{
+		std::cout << RED << "Unsupported codec!" << RESET << std::endl;
+	}
+
+	pCodecContext = avcodec_alloc_context3(pCodec);
+	if (!pCodecContext)
+	{
+		std::cout << RED << "Failed to allocated memory for AVCodecContext" << RESET << std::endl;
+	}
+
+	if (avcodec_parameters_to_context(pCodecContext, codecParameters) < 0)
+	{
+		std::cout << RED << "failed to copy codec params to codec context" RESET << std::endl;
+	}
+
+	// Open codec
+	if (avcodec_open2(pCodecContext, pCodec, &optionsDict) < 0)
+		std::cout << RED << "Could not open codec" << RESET << std::endl;
+
+	// Allocate video frame
+	pFrame = av_frame_alloc();
+
+	// Allocate an AVFrame structure
+	pFrameRGB = av_frame_alloc();
+	if (pFrameRGB == nullptr)
+		std::cout << RED << "Cannot allocate RGB Frame" << RESET << std::endl;
+
+	// Close the video file
+	avformat_close_input(&pFormatContext);
+}
+
+GoProVideoExtractor::~GoProVideoExtractor()
+{
+	// Free the RGB image
+	av_free(pFrameRGB);
+
+	// Free the YUV frame
+	av_free(pFrame);
+
+	// Close the codec
+	avcodec_close(pCodecContext);
+
+	// Close the video file
+	avformat_close_input(&pFormatContext);
+}
 void GoProVideoExtractor::save_to_png(AVFrame *frame, AVCodecContext *codecContext, int width, int height,
 									  AVRational time_base, std::string filename)
 {
@@ -102,125 +205,24 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 	{
 		std::experimental::filesystem::create_directories(image_data_folder);
 	}
-
 	std::string image_file = image_folder + "/data.csv";
-
 	std::ofstream image_stream;
 	image_stream.open(image_file);
 	image_stream << std::fixed << std::setprecision(19);
 	image_stream << "#timestamp [ns],filename" << std::endl;
-
-	av_register_all();
-
-	AVFormatContext *pFormatContext = NULL;
-	int i, videoStreamIndex;
-	AVCodecContext *pCodecContext = NULL;
-	AVCodec *pCodec = NULL;
-	AVFrame *pFrame = NULL;
-	AVFrame *pFrameRGB = NULL;
-	AVPacket packet;
-	int frameFinished;
-	int numBytes;
-	uint8_t *buffer = NULL;
-
-	AVDictionary *optionsDict = NULL;
-	AVDictionaryEntry *tag_dict = NULL;
-	struct SwsContext *sws_ctx = NULL;
-	AVStream *video_stream = NULL;
-
-	// Open video file
-	std::cout << "Opening Video File: " << video_file << std::endl;
-	pFormatContext = avformat_alloc_context();
-	if (!pFormatContext)
-	{
-		printf("ERROR could not allocate memory for Format Context");
-		return -1;
-	}
 
 	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
 	{
 		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
 		return -1;
 	}
-	// Retrieve stream information
-	if (avformat_find_stream_info(pFormatContext, NULL) < 0)
-		return -1; // Couldn't find stream information
-
-	// Dump information about file onto standard error
-	av_dump_format(pFormatContext, 0, video_file.c_str(), 0);
-
-	std::string video_creation_time;
-
-	AVCodecParameters *codecParameters;
-
-	// Find the first video stream
-	videoStreamIndex = -1;
-	for (i = 0; i < pFormatContext->nb_streams; i++)
-	{
-		codecParameters = pFormatContext->streams[i]->codecpar;
-		if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO)
-		{
-
-			tag_dict = av_dict_get(pFormatContext->metadata, "", tag_dict, AV_DICT_IGNORE_SUFFIX);
-			while (tag_dict)
-			{
-				if (strcmp(tag_dict->key, "creation_time") == 0)
-				{
-					std::stringstream ss;
-					ss << tag_dict->value;
-					ss >> video_creation_time;
-				}
-				tag_dict = av_dict_get(pFormatContext->metadata, "", tag_dict, AV_DICT_IGNORE_SUFFIX);
-			}
-
-			videoStreamIndex = i;
-			break;
-		}
-	}
-
-	if (videoStreamIndex == -1)
-		return -1; // Didn't find a video stream
-
-	// Get a pointer to the codec context for the video stream
-	pCodec = avcodec_find_decoder(pFormatContext->streams[videoStreamIndex]->codecpar->codec_id);
 	video_stream = pFormatContext->streams[videoStreamIndex];
-
-	// Find the decoder for the video stream
-	if (pCodec == nullptr)
-	{
-		fprintf(stderr, "Unsupported codec!\n");
-		return -1; // Codec not found
-	}
-
-	pCodecContext = avcodec_alloc_context3(pCodec);
-	if (!pCodecContext)
-	{
-		printf("failed to allocated memory for AVCodecContext");
-		return -1;
-	}
-	if (avcodec_parameters_to_context(pCodecContext, codecParameters) < 0)
-	{
-		printf("failed to copy codec params to codec context");
-		return -1;
-	}
-
-	// Open codec
-	if (avcodec_open2(pCodecContext, pCodec, &optionsDict) < 0)
-		return -1; // Could not open codec
-
-	// Allocate video frame
-	pFrame = av_frame_alloc();
-
-	// Allocate an AVFrame structure
-	pFrameRGB = av_frame_alloc();
-	if (pFrameRGB == nullptr)
-		return -1;
 
 	//PIX_FMT_RGB24
 	// Determine required buffer size and allocate buffer
-	numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
-										height, 1);
-	buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
+											height, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
 
 	sws_ctx =
 		sws_getContext(
@@ -247,14 +249,13 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 	double global_clock;
 	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
 
+	int frameFinished;
 	while (av_read_frame(pFormatContext, &packet) >= 0)
 	{
 		// Is this a packet from the video stream?
 		if (packet.stream_index == videoStreamIndex)
 		{
 			// Decode video frame
-			//			avcodec_send_packet(pCodecContext, &packet);
-			//			frameFinished = avcodec_receive_frame(pCodecContext, pFrameRGB);
 			avcodec_decode_video2(pCodecContext, pFrame, &frameFinished,
 								  &packet);
 
@@ -297,7 +298,7 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 					pFrameRGB->linesize);
 
 				// Save the frame to disk
-				//				std::cout << "Global Clock: " << global_clock << std::endl;
+				std::cout << "Global Clock: " << global_clock << std::endl;
 				uint64_t nanosecs = (uint64_t)(global_clock * 1e9);
 				//				std::cout << "Nano secs: " << nanosecs << std::endl;
 				uint64_t current_stamp = start_time + nanosecs;
@@ -316,13 +317,6 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 
 	// Free the RGB image
 	av_free(buffer);
-	av_free(pFrameRGB);
-
-	// Free the YUV frame
-	av_free(pFrame);
-
-	// Close the codec
-	avcodec_close(pCodecContext);
 
 	// Close the video file
 	avformat_close_input(&pFormatContext);
@@ -334,104 +328,21 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 {
 	stamps.clear();
 
-	av_register_all();
-
-	AVFormatContext *pFormatContext = NULL;
-	int i, videoStreamIndex;
-	AVCodecContext *pCodecContext = NULL;
-	AVCodec *pCodec = NULL;
-	AVFrame *pFrame = NULL;
-	AVFrame *pFrameRGB = NULL;
-	AVPacket packet;
-	int frameFinished;
-	int numBytes;
-	uint8_t *buffer = NULL;
-
-	AVDictionary *optionsDict = NULL;
-	AVDictionaryEntry *tag_dict = NULL;
-	struct SwsContext *sws_ctx = NULL;
-	AVStream *video_stream = NULL;
-
-	// Open video file
-	std::cout << "Opening Video File: " << video_file << std::endl;
-	pFormatContext = avformat_alloc_context();
-	if (!pFormatContext)
-	{
-		printf("ERROR could not allocate memory for Format Context");
-		return -1;
-	}
+	std::cout << GREEN << "!!!!!!!!!!!!!Here!!!!!!!!!!!!!!!!!!!!!" << RESET << std::endl;
 
 	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
 	{
 		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
-		return -1;
 	}
-	// Retrieve stream information
-	if (avformat_find_stream_info(pFormatContext, NULL) < 0)
-		return -1; // Couldn't find stream information
-
-	// Dump information about file onto standard error
-	av_dump_format(pFormatContext, 0, video_file.c_str(), 0);
-
-	AVCodecParameters *codecParameters;
-
-	// Find the first video stream
-	videoStreamIndex = -1;
-	for (i = 0; i < pFormatContext->nb_streams; i++)
-	{
-		codecParameters = pFormatContext->streams[i]->codecpar;
-		if (codecParameters->codec_type == AVMEDIA_TYPE_VIDEO)
-		{
-			videoStreamIndex = i;
-			break;
-		}
-	}
-
-	if (videoStreamIndex == -1)
-		return -1; // Didn't find a video stream
-
-	// Get a pointer to the codec context for the video stream
-	pCodec = avcodec_find_decoder(pFormatContext->streams[videoStreamIndex]->codecpar->codec_id);
 	video_stream = pFormatContext->streams[videoStreamIndex];
-
-	// Find the decoder for the video stream
-	if (pCodec == nullptr)
-	{
-		fprintf(stderr, "Unsupported codec!\n");
-		return -1; // Codec not found
-	}
-
-	pCodecContext = avcodec_alloc_context3(pCodec);
-	if (!pCodecContext)
-	{
-		printf("failed to allocated memory for AVCodecContext");
-		return -1;
-	}
-	if (avcodec_parameters_to_context(pCodecContext, codecParameters) < 0)
-	{
-		printf("failed to copy codec params to codec context");
-		return -1;
-	}
-
-	// Open codec
-	if (avcodec_open2(pCodecContext, pCodec, &optionsDict) < 0)
-		return -1; // Could not open codec
-
-	// Allocate video frame
-	pFrame = av_frame_alloc();
-
-	// Allocate an AVFrame structure
-	pFrameRGB = av_frame_alloc();
-	if (pFrameRGB == nullptr)
-		return -1;
 
 	//PIX_FMT_RGB24
 	// Determine required buffer size and allocate buffer
 
 	int width = 100, height = 100;
-	numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
-										height, 1);
-	buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
+											height, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
 
 	sws_ctx =
 		sws_getContext(
@@ -445,7 +356,7 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 			nullptr,
 			nullptr,
 			nullptr);
-	//
+
 	// Assign appropriate parts of buffer to image planes in pFrameRGB
 	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
 	// of AVPicture
@@ -454,7 +365,7 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 
 	double global_clock;
 	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
-
+	int frameFinished;
 	while (av_read_frame(pFormatContext, &packet) >= 0)
 	{
 		// Is this a packet from the video stream?
@@ -493,20 +404,12 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 			}
 
 			uint64_t usecs = (uint64_t)(global_clock * 1000000);
-			// std::cout << "Stamp: " << usecs << std::endl;
+			std::cout << "Stamp: " << usecs << std::endl;
 			stamps.push_back(usecs);
 		}
 	}
 
-	// Free the RGB image
 	av_free(buffer);
-	av_free(pFrameRGB);
-
-	// Free the YUV frame
-	av_free(pFrame);
-
-	// Close the codec
-	avcodec_close(pCodecContext);
 
 	// Close the video file
 	avformat_close_input(&pFormatContext);
