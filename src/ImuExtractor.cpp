@@ -433,3 +433,8 @@ void GoProImuExtractor::getFrameStamps(std::vector<uint64_t> &start_stamps, std:
         samples.push_back(total_samples);
     }
 }
+
+void GoProImuExtractor::skipPayloads(uint32_t num_payloads)
+{
+    payloads_skipped = num_payloads;
+}

@@ -53,8 +53,7 @@ public:
 
     void save_raw(AVFrame *pFrame, int width, int height, std::string filename);
 
-    int extract_frames(const std::string &base_folder);
-
+    int extractFrames(const std::string &base_folder, uint64_t last_image_stamp_ns = 0);
     int getFrameStamps(std::vector<uint64_t> &stamps);
 
     inline uint32_t getFrameCount() { return num_frames; }

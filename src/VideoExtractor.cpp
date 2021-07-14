@@ -213,7 +213,7 @@ void GoProVideoExtractor::save_raw(AVFrame *pFrame, int width, int height, std::
 	fclose(pFile);
 }
 
-int GoProVideoExtractor::extract_frames(const std::string &image_folder)
+int GoProVideoExtractor::extractFrames(const std::string &image_folder, uint64_t last_image_stamp_ns)
 {
 
 	std::string image_data_folder = image_folder + "/data";
@@ -313,11 +313,13 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder)
 					pFrameRGB->linesize);
 
 				// Save the frame to disk
-				std::cout << "Global Clock: " << global_clock << std::endl;
+				// std::cout << "Global Clock: " << global_clock << std::endl;
 				uint64_t nanosecs = (uint64_t)(global_clock * 1e9);
 				//				std::cout << "Nano secs: " << nanosecs << std::endl;
+				if (nanosecs > last_image_stamp_ns)
+					break;
 				uint64_t current_stamp = video_creation_time + nanosecs;
-				std::string string_stamp = uint64_to_string(current_stamp);
+				std::string string_stamp = uint64_to_string(nanosecs);
 				std::string stamped_image_filename = image_data_folder + "/" + string_stamp;
 				image_stream << string_stamp << "," << string_stamp + ".png" << std::endl;
 				save_to_png(pFrameRGB, pCodecContext, image_width, image_height, video_stream->time_base, stamped_image_filename);
@@ -390,7 +392,7 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 			}
 
 			uint64_t usecs = (uint64_t)(global_clock * 1000000);
-			std::cout << "Stamp: " << usecs << std::endl;
+			// std::cout << "Stamp: " << usecs << std::endl;
 			stamps.push_back(usecs);
 		}
 	}
