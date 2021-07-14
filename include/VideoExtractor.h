@@ -39,10 +39,13 @@ private:
     AVStream *video_stream = NULL;
     AVCodecParameters *codecParameters;
 
-    std::string video_creation_time;
+    uint64_t video_creation_time;
+    uint32_t image_width;
+    uint32_t image_height;
+    uint32_t num_frames;
 
 public:
-    GoProVideoExtractor(std::string file);
+    GoProVideoExtractor(const std::string file, double scaling_factor = 1.0);
     ~GoProVideoExtractor();
 
     void save_to_png(AVFrame *frame, AVCodecContext *codecContext, int width, int height,
@@ -50,7 +53,10 @@ public:
 
     void save_raw(AVFrame *pFrame, int width, int height, std::string filename);
 
-    int extract_frames(const std::string &base_folder, int width, int height);
+    int extract_frames(const std::string &base_folder);
 
     int getFrameStamps(std::vector<uint64_t> &stamps);
+
+    inline uint32_t getFrameCount() { return num_frames; }
+    inline uint64_t getVideoCreationTime() { return video_creation_time; }
 };

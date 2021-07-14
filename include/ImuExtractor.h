@@ -29,6 +29,11 @@ private:
     uint32_t *payload = NULL;
     size_t payloadres = 0;
 
+    //Video Metadata
+    uint32_t frame_count;
+    uint32_t frame_rate;
+    uint64_t movie_creation_time;
+
 public:
     GoProImuExtractor(const std::string file);
     bool display_video_framerate();
@@ -41,4 +46,7 @@ public:
     GPMF_ERR show_current_payload(uint32_t index);
 
     void getFrameStamps(std::vector<uint64_t> &start_stamps, std::vector<uint32_t> &samples);
+
+    inline uint32_t getImageCount() { return frame_count; }
+    inline uint64_t getVideoCreationTime() { return movie_creation_time; }
 };

@@ -1,0 +1,14 @@
+<launch>
+
+  <!-- Arguments -->
+  <arg name="gopro_video" default="/home/bjoshi/gopro9/GX010037.MP4"/>
+  <arg name="asl_dir" default="/home/bjoshi/gopro9"/>
+  <arg name="scale" default="0.5"/>
+
+  <node name="gopro_to_asl" pkg="gopro_ros" type="gopro_to_asl" output="screen" required="true" > 
+    <param name="gopro_video" value="$(arg gopro_video)"/>
+    <param name="asl_dir" value="$(arg asl_dir)"/>
+    <param name="scale" value="$(arg scale)"/>
+  </node>
+
+</launch>

@@ -141,6 +141,7 @@ extern "C"
 	uint32_t GetPayloadRationalTime(size_t mp4Handle, uint32_t index, int32_t *in_numerator, int32_t *out_numerator, uint32_t *denominator);
 	uint32_t GetEditListOffset(size_t mp4Handle, double *offset);
 	uint32_t GetEditListOffsetRationalTime(size_t mp4Handle, int32_t *offset_numerator, uint32_t *denominator);
+	uint32_t getCreationtime(size_t handle);
 
 #ifdef __cplusplus
 }

@@ -30,7 +30,7 @@
 #include <experimental/filesystem>
 #include <iomanip>
 
-GoProVideoExtractor::GoProVideoExtractor(std::string filename)
+GoProVideoExtractor::GoProVideoExtractor(const std::string filename, double scaling_factor)
 {
 	video_file = filename;
 
@@ -57,6 +57,8 @@ GoProVideoExtractor::GoProVideoExtractor(std::string filename)
 
 	// Find the first video stream
 	videoStreamIndex = -1;
+	std::string creation_time;
+
 	for (uint32_t i = 0; i < pFormatContext->nb_streams; i++)
 	{
 		codecParameters = pFormatContext->streams[i]->codecpar;
@@ -70,7 +72,7 @@ GoProVideoExtractor::GoProVideoExtractor(std::string filename)
 				{
 					std::stringstream ss;
 					ss << tag_dict->value;
-					ss >> video_creation_time;
+					ss >> creation_time;
 				}
 				tag_dict = av_dict_get(pFormatContext->metadata, "", tag_dict, AV_DICT_IGNORE_SUFFIX);
 			}
@@ -80,8 +82,12 @@ GoProVideoExtractor::GoProVideoExtractor(std::string filename)
 		}
 	}
 
+	video_creation_time = parseISO(creation_time);
 	if (videoStreamIndex == -1)
 		std::cout << RED << "Didn't find a video stream" << RESET << std::endl;
+
+	video_stream = pFormatContext->streams[videoStreamIndex];
+	num_frames = video_stream->nb_frames;
 
 	// Get a pointer to the codec context for the video stream
 	pCodec = avcodec_find_decoder(pFormatContext->streams[videoStreamIndex]->codecpar->codec_id);
@@ -115,7 +121,16 @@ GoProVideoExtractor::GoProVideoExtractor(std::string filename)
 	if (pFrameRGB == nullptr)
 		std::cout << RED << "Cannot allocate RGB Frame" << RESET << std::endl;
 
-	// Close the video file
+	image_height = pCodecContext->height;
+	image_width = pCodecContext->width;
+
+	if (scaling_factor != 1.0)
+	{
+		image_height = (int)((double)image_height * scaling_factor);
+		image_width = (int)((double)image_width * scaling_factor);
+	}
+
+	// Close the video formatcontext
 	avformat_close_input(&pFormatContext);
 }
 
@@ -130,9 +145,10 @@ GoProVideoExtractor::~GoProVideoExtractor()
 	// Close the codec
 	avcodec_close(pCodecContext);
 
-	// Close the video file
+	// Close the format context
 	avformat_close_input(&pFormatContext);
 }
+
 void GoProVideoExtractor::save_to_png(AVFrame *frame, AVCodecContext *codecContext, int width, int height,
 									  AVRational time_base, std::string filename)
 {
@@ -197,7 +213,7 @@ void GoProVideoExtractor::save_raw(AVFrame *pFrame, int width, int height, std::
 	fclose(pFile);
 }
 
-int GoProVideoExtractor::extract_frames(const std::string &image_folder, int width, int height)
+int GoProVideoExtractor::extract_frames(const std::string &image_folder)
 {
 
 	std::string image_data_folder = image_folder + "/data";
@@ -220,8 +236,8 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 
 	//PIX_FMT_RGB24
 	// Determine required buffer size and allocate buffer
-	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
-											height, 1);
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, image_width,
+											image_height, 1);
 	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
 
 	sws_ctx =
@@ -229,8 +245,8 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 			pCodecContext->width,
 			pCodecContext->height,
 			pCodecContext->pix_fmt,
-			width,
-			height,
+			image_width,
+			image_height,
 			AV_PIX_FMT_RGB24,
 			SWS_BILINEAR,
 			nullptr,
@@ -241,9 +257,8 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
 	// of AVPicture
 	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
-						 width, height, 1);
+						 image_width, image_height, 1);
 
-	uint64_t start_time = parseISO(video_creation_time);
 	//	std::cout << "Video Creation Time: " << uint64_to_string(start_time) << std::endl;
 
 	double global_clock;
@@ -301,11 +316,11 @@ int GoProVideoExtractor::extract_frames(const std::string &image_folder, int wid
 				std::cout << "Global Clock: " << global_clock << std::endl;
 				uint64_t nanosecs = (uint64_t)(global_clock * 1e9);
 				//				std::cout << "Nano secs: " << nanosecs << std::endl;
-				uint64_t current_stamp = start_time + nanosecs;
+				uint64_t current_stamp = video_creation_time + nanosecs;
 				std::string string_stamp = uint64_to_string(current_stamp);
 				std::string stamped_image_filename = image_data_folder + "/" + string_stamp;
 				image_stream << string_stamp << "," << string_stamp + ".png" << std::endl;
-				save_to_png(pFrameRGB, pCodecContext, width, height, video_stream->time_base, stamped_image_filename);
+				save_to_png(pFrameRGB, pCodecContext, image_width, image_height, video_stream->time_base, stamped_image_filename);
 			}
 		}
 
@@ -328,40 +343,11 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 {
 	stamps.clear();
 
-	std::cout << GREEN << "!!!!!!!!!!!!!Here!!!!!!!!!!!!!!!!!!!!!" << RESET << std::endl;
-
 	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
 	{
 		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
 	}
 	video_stream = pFormatContext->streams[videoStreamIndex];
-
-	//PIX_FMT_RGB24
-	// Determine required buffer size and allocate buffer
-
-	int width = 100, height = 100;
-	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, width,
-											height, 1);
-	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
-
-	sws_ctx =
-		sws_getContext(
-			pCodecContext->width,
-			pCodecContext->height,
-			pCodecContext->pix_fmt,
-			width,
-			height,
-			AV_PIX_FMT_RGB24,
-			SWS_BILINEAR,
-			nullptr,
-			nullptr,
-			nullptr);
-
-	// Assign appropriate parts of buffer to image planes in pFrameRGB
-	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
-	// of AVPicture
-	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
-						 width, height, 1);
 
 	double global_clock;
 	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
@@ -408,8 +394,6 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 			stamps.push_back(usecs);
 		}
 	}
-
-	av_free(buffer);
 
 	// Close the video file
 	avformat_close_input(&pFormatContext);

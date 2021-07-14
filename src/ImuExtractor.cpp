@@ -46,15 +46,18 @@ GoProImuExtractor::GoProImuExtractor(const std::string file)
         payloads = GetNumberPayloads(mp4);
         // payloads = payloads - 1; // Discarding the last payload. Found that payload is not reliable as others
     }
+    uint32_t fr_num, fr_dem;
+    frame_count = GetVideoFrameRateAndCount(mp4, &fr_num, &fr_dem);
+    frame_rate = (float)fr_num / (float)fr_dem;
+
+    movie_creation_time = (uint64_t)((getCreationtime(mp4) - get_offset_1904()) * 1000000000);
 }
 
 bool GoProImuExtractor::display_video_framerate()
 {
-    uint32_t fr_num, fr_dem;
-    uint32_t frames = GetVideoFrameRateAndCount(mp4, &fr_num, &fr_dem);
-    if (frames)
+    if (frame_count)
     {
-        printf("VIDEO FRAMERATE:\n  %.3f with %d frames\n", (float)fr_num / (float)fr_dem, frames);
+        printf("VIDEO FRAMERATE:\n  %.3f with %d frames\n", frame_rate, frame_count);
         return true;
     }
     else
@@ -248,10 +251,6 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
                << endl;
 
     uint32_t index;
-    mp4object *mp4_obj = (mp4object *)mp4;
-    uint32_t movie_creation_time = mp4_obj->movie_creation_time;
-    uint64_t unix_creation_time = (uint64_t)movie_creation_time - get_offset_1904();
-    unix_creation_time = unix_creation_time * 1000000000;
 
     uint64_t first_frame_us, first_frame_ns;
     vector<vector<double>> accl_data;
@@ -326,7 +325,7 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
             for (int i = 0; i < gyro_data.size(); ++i)
             {
                 uint64_t s = prev_stamp + i * step_size;
-                uint64_t ros_stamp = unix_creation_time + s - first_frame_ns;
+                uint64_t ros_stamp = movie_creation_time + s - first_frame_ns;
                 imu_stream << uint64_to_string(ros_stamp);
 
                 vector<double> gyro_sample = gyro_data.at(i);
@@ -366,7 +365,7 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
     for (int i = 0; i < gyro_data.size(); ++i)
     {
         uint64_t s = prev_stamp + i * mean_step_size;
-        uint64_t ros_stamp = unix_creation_time + s - first_frame_ns;
+        uint64_t ros_stamp = movie_creation_time + s - first_frame_ns;
         imu_stream << uint64_to_string(ros_stamp);
 
         vector<double> gyro_sample = gyro_data.at(i);
@@ -429,7 +428,7 @@ void GoProImuExtractor::getFrameStamps(std::vector<uint64_t> &start_stamps, std:
         uint64_t stamp = get_stamp(STR2FOURCC("CORI"));
         uint32_t total_samples = getNumofSamples(STR2FOURCC("CORI"));
 
-        cout << RED << "Stamp: " << stamp << "\tSamples: " << total_samples << RESET << endl;
+        // cout << RED << "Stamp: " << stamp << "\tSamples: " << total_samples << RESET << endl;
         start_stamps.push_back(stamp);
         samples.push_back(total_samples);
     }

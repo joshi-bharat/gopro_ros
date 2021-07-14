@@ -960,6 +960,15 @@ float GetDuration(size_t handle)
 	return (float)mp4->metadatalength;
 }
 
+uint32_t getCreationtime(size_t handle)
+{
+	mp4object *mp4 = (mp4object *)handle;
+	if (mp4 == NULL)
+		return 0;
+
+	return mp4->movie_creation_time;
+}
+
 uint32_t GetVideoFrameRateAndCount(size_t handle, uint32_t *numer, uint32_t *demon)
 {
 	mp4object *mp4 = (mp4object *)handle;
