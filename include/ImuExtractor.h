@@ -31,26 +31,34 @@ private:
 
     //Video Metadata
     uint32_t frame_count;
-    uint32_t frame_rate;
+    float frame_rate;
     uint64_t movie_creation_time;
 
 public:
     uint32_t payloads_skipped = 0;
-    
+
 public:
     GoProImuExtractor(const std::string file);
+    ~GoProImuExtractor();
+
     bool display_video_framerate();
     void cleanup();
     void show_gpmf_structure();
     GPMF_ERR get_scaled_data(uint32_t fourcc, std::vector<std::vector<double>> &readings);
-    int save_imu_stream(std::string file);
+    int save_imu_stream(const std::string file, uint64_t end_time);
     uint64_t get_stamp(uint32_t fourcc);
     uint32_t getNumofSamples(uint32_t fourcc);
     GPMF_ERR show_current_payload(uint32_t index);
+
     void getFrameStamps(std::vector<uint64_t> &start_stamps, std::vector<uint32_t> &samples);
-
     void skipPayloads(uint32_t last_n_payloads);
+    void getImageStamps(std::vector<uint64_t> &image_stamps);
 
-    inline uint32_t getImageCount() { return frame_count; }
+    // GPMF_ERR getRawData(uint32_t fourcc, vector<vector<float>> &readings);
+
+    inline uint32_t getImageCount()
+    {
+        return frame_count;
+    }
     inline uint64_t getVideoCreationTime() { return movie_creation_time; }
 };

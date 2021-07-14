@@ -53,13 +53,24 @@ int main(int argc, char *argv[])
     vector<uint64_t> start_stamps;
     vector<uint32_t> samples;
     imu_extractor.getFrameStamps(start_stamps, samples);
-    vector<uint64_t> image_stamps;
-    video_extractor.getFrameStamps(image_stamps);
+    // imu_extractor.show_gpmf_structure();
 
-    for (int i = 0; i < start_stamps.size(); i++)
+    vector<uint64_t> gpmf_image_stamps;
+    vector<uint64_t> ffmpeg_image_stamps;
+    imu_extractor.getImageStamps(gpmf_image_stamps);
+    video_extractor.getFrameStamps(ffmpeg_image_stamps);
+
+    for (int i = 0; i < gpmf_image_stamps.size(); i++)
     {
-        cout << "start_stamp: " << i << ": " << start_stamps[i] << "  total_samples: " << samples[i] << endl;
+        int64_t diff = gpmf_image_stamps[i] - ffmpeg_image_stamps[i];
+        if (abs(diff) > 10)
+            ROS_WARN_STREAM("Difference between gpmf and ffmpeg at: " << i << " = " << diff);
     }
+
+    // for (int i = 0; i < start_stamps.size(); i++)
+    // {
+    //     cout << "start_stamp: " << i << ": " << start_stamps[i] << "  total_samples: " << samples[i] << endl;
+    // }
 
     uint32_t gpmf_frame_count = imu_extractor.getImageCount();
     uint32_t ffmpeg_frame_count = video_extractor.getFrameCount();
@@ -82,41 +93,30 @@ int main(int argc, char *argv[])
 
     uint32_t first_stamp = start_stamps.at(0);
 
-    uint32_t total_payloads = samples.size();
     uint32_t last_match = 0;
     for (uint32_t i = 0; i < start_stamps.size(); ++i)
     {
         uint64_t image_stamp;
         if (i == 0)
-            image_stamp = image_stamps.at(0);
+            image_stamp = ffmpeg_image_stamps.at(0);
         else
-            image_stamp = image_stamps.at(samples.at(i - 1));
+            image_stamp = ffmpeg_image_stamps.at(samples.at(i - 1));
 
         if (image_stamp != start_stamps.at(i) - first_stamp)
         {
-            total_payloads = i;
-            ROS_WARN_STREAM("Timestamps from gpmf and ffmpeg do not match" << endl);
-            ROS_WARN_STREAM("Indx: " << i << "\tImage Count: " << samples.at(i - 1) << endl);
-            ROS_WARN_STREAM("Image Stamps: " << image_stamp << "\t" << start_stamps.at(i) - first_stamp << RESET << endl);
+            ROS_WARN_STREAM("Timestamps from gpmf and ffmpeg do not match");
+            ROS_WARN_STREAM("Indx: " << i << "\tImage Count: " << samples.at(i - 1));
+            ROS_WARN_STREAM("Image Stamps: " << image_stamp << "\t" << start_stamps.at(i) - first_stamp);
             break;
         }
         last_match = image_stamp;
     }
 
-    ROS_INFO_STREAM("Last stamp matched: " << last_match);
-    // imu_extractor.show_current_payload(samples.size() - 1);
-    // imu_extractor.save_imu_stream(imu_file);
-    // video_extractor.extract_frames(image_folder);
-    uint32_t skips = 0;
-    if (samples.size() != total_payloads)
-    {
-        //
-        skips = samples.size() - total_payloads;
-        ROS_WARN_STREAM("Skipping " << skips << " payloads");
-        ROS_FATAL_STREAM_COND(skips > 5, "Too many skips");
-    }
+    uint64_t last_image_stamp_ns = ((uint64_t)last_match) * 1000;
+    ROS_INFO_STREAM("Last stamp matched: " << last_image_stamp_ns);
 
-    uint64_t last_image_stamp_ns = (uint64_t)(last_match * 1000);
     video_extractor.extractFrames(image_folder, last_image_stamp_ns);
+    imu_extractor.save_imu_stream(imu_file, last_image_stamp_ns);
+
     return 0;
 }

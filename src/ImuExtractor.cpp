@@ -66,6 +66,17 @@ bool GoProImuExtractor::display_video_framerate()
     }
 }
 
+GoProImuExtractor::~GoProImuExtractor()
+{
+    if (payloadres)
+        FreePayloadResource(mp4, payloadres);
+    if (ms)
+        GPMF_Free(ms);
+
+    payload = NULL;
+    CloseSource(mp4);
+}
+
 void GoProImuExtractor::cleanup()
 {
     if (payloadres)
@@ -133,6 +144,53 @@ void GoProImuExtractor::show_gpmf_structure()
     } while (GPMF_OK == nextret);
     GPMF_ResetState(ms);
 }
+
+// // GPMF_ERR GoProImuExtractor::getRawData(uint32_t fourcc, vector<vector<float>> &readings)
+// {
+
+//     while (GPMF_OK == GPMF_FindNext(ms, STR2FOURCC("STRM"), static_cast<GPMF_LEVELS>(GPMF_RECURSE_LEVELS | GPMF_TOLERANT))) //GoPro Hero5/6/7 Accelerometer)
+//     {
+//         if (GPMF_OK != GPMF_FindNext(ms, fourcc, static_cast<GPMF_LEVELS>(GPMF_RECURSE_LEVELS | GPMF_TOLERANT)))
+//             continue;
+
+//         uint32_t samples = GPMF_Repeat(ms);
+//         uint32_t elements = GPMF_ElementsInStruct(ms);
+//         uint32_t struct_size = GPMF_StructSize(ms);
+
+//         cout << "struct size: " << struct_size << endl;
+
+//         uint32_t buffersize = samples * elements * sizeof(double);
+//         double *ptr, *tmpbuffer = (double *)malloc(buffersize);
+
+//         //     readings.resize(samples);
+
+//         //     if (tmpbuffer && samples)
+//         //     {
+//         //         uint32_t i, j;
+
+//         //         //GPMF_FormattedData(ms, tmpbuffer, buffersize, 0, samples); // Output data in LittleEnd, but no scale
+//         //         if (GPMF_OK == GPMF_ScaledData(ms, tmpbuffer, buffersize, 0, samples, GPMF_TYPE_DOUBLE)) //Output scaled data as floats
+//         //         {
+
+//         //             ptr = tmpbuffer;
+//         //             for (i = 0; i < samples; i++)
+//         //             {
+//         //                 vector<double> sample(elements);
+//         //                 for (j = 0; j < elements; j++)
+//         //                 {
+//         //                     sample.at(j) = *ptr++;
+//         //                 }
+//         //                 readings.at(i) = sample;
+//         //             }
+//         //         }
+//         //         free(tmpbuffer);
+//         //     }
+//         // }
+
+//         // GPMF_ResetState(ms);
+//         return GPMF_OK;
+//     }
+// }
 
 /** Only supports native formats like ACCL, GYRO, GPS
  *
@@ -240,7 +298,65 @@ GPMF_ERR GoProImuExtractor::show_current_payload(uint32_t index)
     GPMF_ResetState(ms);
 }
 
-int GoProImuExtractor::save_imu_stream(std::string imu_file)
+void GoProImuExtractor::getImageStamps(vector<uint64_t> &image_stamps)
+{
+    uint64_t first_frame_us;
+    uint64_t current_stamp, prev_stamp;
+
+    vector<uint64_t> steps;
+    uint64_t total_samples = 0;
+
+    vector<vector<double>> cori_data;
+
+    for (uint32_t index = 0; index < payloads; index++)
+    {
+        GPMF_ERR ret;
+        uint32_t payload_size;
+
+        payload_size = GetPayloadSize(mp4, index);
+        payloadres = GetPayloadResource(mp4, payloadres, payload_size);
+        payload = GetPayload(mp4, payloadres, index);
+
+        if (payload == NULL)
+            cleanup();
+        ret = GPMF_Init(ms, payload, payload_size);
+        if (ret != GPMF_OK)
+            cleanup();
+
+        if (index == 0)
+        {
+            first_frame_us = get_stamp(STR2FOURCC("CORI"));
+            cout << "Image Initial Stamp: " << first_frame_us << endl;
+        }
+
+        current_stamp = get_stamp(STR2FOURCC("CORI"));
+        if (index > 0)
+        {
+            uint64_t time_span = current_stamp - prev_stamp;
+            double step_size = (double)time_span / (double)cori_data.size();
+            steps.emplace_back(step_size);
+
+            for (int i = 0; i < cori_data.size(); ++i)
+            {
+                uint64_t s = prev_stamp + (uint64_t)((double)i * step_size);
+                uint64_t ros_stamp = s - first_frame_us;
+                image_stamps.push_back(ros_stamp);
+            }
+        }
+
+        cori_data.clear();
+        get_scaled_data(STR2FOURCC("CORI"), cori_data);
+
+        total_samples += cori_data.size();
+        //        double start_stamp_secs = ((double) current_stamp)*1e-9;
+        //        std::cout << "Payload Start Stamp: " << start_stamp_secs << "\tSamples: " << accl_data.size() << endl;
+        prev_stamp = current_stamp;
+
+        GPMF_Free(ms);
+    }
+}
+
+int GoProImuExtractor::save_imu_stream(const std::string imu_file, uint64_t end_time)
 {
 
     ofstream imu_stream;
@@ -249,8 +365,6 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
     imu_stream << "#timestamp [ns],w_RS_S_x [rad s^-1],w_RS_S_y [rad s^-1],w_RS_S_z [rad s^-1],"
                   "a_RS_S_x [m s^-2],a_RS_S_y [m s^-2],a_RS_S_z [m s^-2]"
                << endl;
-
-    uint32_t index;
 
     uint64_t first_frame_us, first_frame_ns;
     vector<vector<double>> accl_data;
@@ -261,7 +375,7 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
     vector<uint64_t> steps;
     uint64_t total_samples = 0;
 
-    for (index = 0; index < payloads; index++)
+    for (uint32_t index = 0; index < payloads; index++)
     {
         GPMF_ERR ret;
         uint32_t payload_size;
@@ -280,6 +394,7 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
         {
             first_frame_us = get_stamp(STR2FOURCC("CORI"));
             first_frame_ns = first_frame_us * 1000;
+            // cout << "Image Initial Stamp: " << first_frame_ns << endl;
         }
 
         current_stamp = get_stamp(STR2FOURCC("ACCL"));
@@ -303,7 +418,7 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
             //            show_current_payload(index);
         }
 
-        current_stamp *= 1000;
+        current_stamp = current_stamp * 1000; // us to ns
         if (index > 0)
         {
             uint64_t time_span = current_stamp - prev_stamp;
@@ -339,6 +454,10 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
                 imu_stream << "," << accl_sample.at(1);
                 imu_stream << "," << accl_sample.at(2);
                 imu_stream << "," << accl_sample.at(0) << endl;
+
+                // Letting one extra imu stamp
+                if ((ros_stamp - movie_creation_time) > end_time)
+                    break;
             }
         }
 
@@ -355,35 +474,9 @@ int GoProImuExtractor::save_imu_stream(std::string imu_file)
         GPMF_Free(ms);
     }
 
-    uint64_t mean_step_size = 0;
-    for (double step_size : steps)
-    {
-        mean_step_size += step_size;
-    }
-    mean_step_size /= steps.size();
-
-    for (int i = 0; i < gyro_data.size(); ++i)
-    {
-        uint64_t s = prev_stamp + i * mean_step_size;
-        uint64_t ros_stamp = movie_creation_time + s - first_frame_ns;
-        imu_stream << uint64_to_string(ros_stamp);
-
-        vector<double> gyro_sample = gyro_data.at(i);
-
-        // Data comes in ZXY order
-        imu_stream << "," << gyro_sample.at(1);
-        imu_stream << "," << gyro_sample.at(2);
-        imu_stream << "," << gyro_sample.at(0);
-
-        vector<double> accl_sample = accl_data.at(i);
-        imu_stream << "," << accl_sample.at(1);
-        imu_stream << "," << accl_sample.at(2);
-        imu_stream << "," << accl_sample.at(0) << endl;
-    }
-
     std::cout << GREEN << "Wrote " << total_samples << " imu samples to file" << RESET << endl;
     imu_stream.close();
-    CloseSource(mp4);
+    // CloseSource(mp4);
 }
 
 uint32_t GoProImuExtractor::getNumofSamples(uint32_t fourcc)
