@@ -21,9 +21,15 @@
 
 #include "ImuExtractor.h"
 #include "utils.h"
+
+#include <cstdlib>
+#include <experimental/filesystem>
 #include <fstream>
 #include <iomanip>
-#include <cstdlib>
+
+#include <rosbag/bag.h>
+#include <std_msgs/Header.h>
+#include <sensor_msgs/Imu.h>
 
 extern void PrintGPMF(GPMF_stream *ms);
 
@@ -530,4 +536,138 @@ void GoProImuExtractor::getFrameStamps(std::vector<uint64_t> &start_stamps, std:
 void GoProImuExtractor::skipPayloads(uint32_t num_payloads)
 {
     payloads_skipped = num_payloads;
+}
+
+void GoProImuExtractor::writeImuData(const std::string &bag_file, uint64_t end_time, const std::string &imu_topic)
+{
+    rosbag::Bag bag;
+    if (std::experimental::filesystem::exists(bag_file))
+        bag.open(bag_file, rosbag::bagmode::Append);
+    else
+        bag.open(bag_file, rosbag::bagmode::Write);
+
+    uint64_t first_frame_us, first_frame_ns;
+    vector<vector<double>> accl_data;
+    vector<vector<double>> gyro_data;
+
+    uint64_t current_stamp, prev_stamp;
+
+    vector<uint64_t> steps;
+    uint64_t total_samples = 0;
+    uint64_t seq = 0;
+
+    for (uint32_t index = 0; index < payloads; index++)
+    {
+        GPMF_ERR ret;
+        uint32_t payload_size;
+
+        payload_size = GetPayloadSize(mp4, index);
+        payloadres = GetPayloadResource(mp4, payloadres, payload_size);
+        payload = GetPayload(mp4, payloadres, index);
+
+        if (payload == NULL)
+            cleanup();
+        ret = GPMF_Init(ms, payload, payload_size);
+        if (ret != GPMF_OK)
+            cleanup();
+
+        if (index == 0)
+        {
+            first_frame_us = get_stamp(STR2FOURCC("CORI"));
+            first_frame_ns = first_frame_us * 1000;
+            // cout << "Image Initial Stamp: " << first_frame_ns << endl;
+        }
+
+        current_stamp = get_stamp(STR2FOURCC("ACCL"));
+        uint64_t current_gyro_stamp = get_stamp(STR2FOURCC("GYRO"));
+
+        if (current_gyro_stamp != current_stamp)
+        {
+            int32_t diff = current_gyro_stamp - current_stamp;
+            if (abs(diff) > 20)
+            {
+                cout << RED << "[ERROR] ACCL and GYRO timestamp heavily un-synchronized ....Shutting Down!!!" << RESET << endl;
+                std::cout << RED << "Index: " << index << " accl stamp: " << current_stamp << " gyro stamp: " << current_gyro_stamp << RESET << endl;
+                exit(1);
+            }
+            else
+            {
+                cout << YELLOW << "[WARN] ACCL and GYRO timestamp slightly not synchronized ...." << RESET << endl;
+                std::cout << YELLOW << "Index: " << index << " accl stamp: " << current_stamp << " gyro stamp: " << current_gyro_stamp << RESET << endl;
+            }
+
+            //            show_current_payload(index);
+        }
+
+        current_stamp = current_stamp * 1000; // us to ns
+        if (index > 0)
+        {
+            uint64_t time_span = current_stamp - prev_stamp;
+            if (time_span < 0)
+            {
+                cout << RED << "previous timestamp should be smaller than current stamp" << RESET << endl;
+                exit(1);
+            }
+
+            uint64_t step_size = time_span / accl_data.size();
+            steps.emplace_back(step_size);
+
+            if (accl_data.size() != gyro_data.size())
+            {
+                cout << RED << "ACCL and GYRO data must be of same size" << RESET << endl;
+                exit(1);
+            }
+
+            for (int i = 0; i < gyro_data.size(); ++i)
+            {
+                uint64_t s = prev_stamp + i * step_size;
+                uint64_t current_stamp = movie_creation_time + s - first_frame_ns;
+
+                uint32_t secs = current_stamp * 1e-9;
+                uint32_t n_secs = current_stamp % 1000000000;
+                ros::Time ros_time(secs, n_secs);
+
+                std_msgs::Header header;
+                header.stamp = ros_time;
+                header.frame_id = "gopro";
+                header.seq = seq++;
+
+                vector<double> gyro_sample = gyro_data.at(i);
+                vector<double> accl_sample = accl_data.at(i);
+
+                sensor_msgs::Imu imu_msg;
+                imu_msg.header = header;
+                // Data comes in ZXY order
+                imu_msg.angular_velocity.x = gyro_sample.at(1);
+                imu_msg.angular_velocity.y = gyro_sample.at(2);
+                imu_msg.angular_velocity.z = gyro_sample.at(0);
+                imu_msg.linear_acceleration.x = accl_sample.at(1);
+                imu_msg.linear_acceleration.y = accl_sample.at(2);
+                imu_msg.linear_acceleration.z = accl_sample.at(0);
+
+                bag.write(imu_topic, ros_time, imu_msg); // Write to bag
+
+                // Letting one extra imu stamp
+                if ((current_stamp - movie_creation_time) > end_time)
+                    break;
+            }
+        }
+
+        gyro_data.clear();
+        accl_data.clear();
+        get_scaled_data(STR2FOURCC("ACCL"), accl_data);
+        get_scaled_data(STR2FOURCC("GYRO"), gyro_data);
+
+        total_samples += gyro_data.size();
+        //        double start_stamp_secs = ((double) current_stamp)*1e-9;
+        //        std::cout << "Payload Start Stamp: " << start_stamp_secs << "\tSamples: " << accl_data.size() << endl;
+        prev_stamp = current_stamp;
+
+        GPMF_Free(ms);
+    }
+
+    std::cout << GREEN << "Wrote " << total_samples << " imu samples to file" << RESET << endl;
+
+    //close the bag file
+    bag.close();
 }

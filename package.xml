@@ -8,10 +8,13 @@
 
     <buildtool_depend>catkin</buildtool_depend>
     
-    <depend>sensor_msgs</depend>
+    <depend>cv_bridge</depend>
     <depend>geometry_msgs</depend>
+    <depend>rosbag</depend>
     <depend>roscpp</depend>
-    
+    <depend>sensor_msgs</depend>
+    <depend>std_msgs</depend>
+
     <exec_depend>rospy</exec_depend>
 
 </package>

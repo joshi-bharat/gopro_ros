@@ -18,6 +18,8 @@ extern "C"
 #include <string>
 #include <vector>
 
+#include <opencv2/opencv.hpp>
+
 class GoProVideoExtractor
 {
 
@@ -53,8 +55,12 @@ public:
 
     void save_raw(AVFrame *pFrame, int width, int height, std::string filename);
 
-    int extractFrames(const std::string &base_folder, uint64_t last_image_stamp_ns = 0);
+    int extractFrames(const std::string &base_folder, uint64_t last_image_stamp_ns);
     int getFrameStamps(std::vector<uint64_t> &stamps);
+
+    void displayImages();
+    void writeVideo(const std::string &bag_file, uint64_t last_image_stamp_ns,
+                    const std::string &image_topic);
 
     inline uint32_t getFrameCount() { return num_frames; }
     inline uint64_t getVideoCreationTime() { return video_creation_time; }

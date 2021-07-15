@@ -54,6 +54,8 @@ public:
     void skipPayloads(uint32_t last_n_payloads);
     void getImageStamps(std::vector<uint64_t> &image_stamps);
 
+    void writeImuData(const std::string &file, uint64_t end_time, const std::string &imu_topic);
+
     // GPMF_ERR getRawData(uint32_t fourcc, vector<vector<float>> &readings);
 
     inline uint32_t getImageCount()

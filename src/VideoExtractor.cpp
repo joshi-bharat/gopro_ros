@@ -30,6 +30,10 @@
 #include <experimental/filesystem>
 #include <iomanip>
 
+#include <cv_bridge/cv_bridge.h>
+#include <rosbag/bag.h>
+#include <std_msgs/Header.h>
+
 GoProVideoExtractor::GoProVideoExtractor(const std::string filename, double scaling_factor)
 {
 	video_file = filename;
@@ -403,4 +407,248 @@ int GoProVideoExtractor::getFrameStamps(std::vector<uint64_t> &stamps)
 	avformat_close_input(&pFormatContext);
 
 	return 0;
+}
+
+void GoProVideoExtractor::displayImages()
+{
+
+	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
+	{
+		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
+		exit(1);
+	}
+
+	video_stream = pFormatContext->streams[videoStreamIndex];
+
+	//PIX_FMT_RGB24
+	// Determine required buffer size and allocate buffer
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, image_width,
+											image_height, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+
+	sws_ctx =
+		sws_getContext(
+			pCodecContext->width,
+			pCodecContext->height,
+			pCodecContext->pix_fmt,
+			image_width,
+			image_height,
+			AV_PIX_FMT_RGB24,
+			SWS_BILINEAR,
+			nullptr,
+			nullptr,
+			nullptr);
+	//
+	// Assign appropriate parts of buffer to image planes in pFrameRGB
+	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
+	// of AVPicture
+	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
+						 image_width, image_height, 1);
+
+	//	std::cout << "Video Creation Time: " << uint64_to_string(start_time) << std::endl;
+
+	double global_clock;
+	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
+
+	int frameFinished;
+	// cv::namedWindow("GoPro Video", cv::WINDOW_GUI_EXPANDED);
+
+	while (av_read_frame(pFormatContext, &packet) >= 0)
+	{
+		// Is this a packet from the video stream?
+		if (packet.stream_index == videoStreamIndex)
+		{
+			// Decode video frame
+			avcodec_decode_video2(pCodecContext, pFrame, &frameFinished,
+								  &packet);
+
+			// Did we get a video frame?
+
+			if (packet.dts != AV_NOPTS_VALUE)
+			{
+				global_clock = av_frame_get_best_effort_timestamp(pFrame);
+				global_video_pkt_pts = packet.pts;
+			}
+			else if (global_video_pkt_pts && global_video_pkt_pts != AV_NOPTS_VALUE)
+			{
+				global_clock = global_video_pkt_pts;
+			}
+			else
+			{
+				global_clock = 0;
+			}
+
+			double frame_delay = av_q2d(video_stream->time_base);
+			global_clock *= frame_delay;
+
+			//Only if we are repeating the
+			if (pFrame->repeat_pict > 0)
+			{
+				double extra_delay = pFrame->repeat_pict * (frame_delay * 0.5);
+				global_clock += extra_delay;
+			}
+
+			if (frameFinished)
+			{
+				// Convert the image from its native format to RGB
+				sws_scale(
+					sws_ctx,
+					(uint8_t const *const *)pFrame->data,
+					pFrame->linesize,
+					0,
+					pCodecContext->height,
+					pFrameRGB->data,
+					pFrameRGB->linesize);
+
+				cv::Mat img(image_height, image_width, CV_8UC3, pFrameRGB->data[0], pFrameRGB->linesize[0]);
+				cv::cvtColor(img, img, cv::COLOR_RGB2BGR);
+				// std::cout << "width: " << img.size().width << " height: " << img.size().height << std::endl;
+				cv::imshow("GoPro Video", img);
+				cv::waitKey(1);
+			}
+		}
+
+		// Free the packet that was allocated by av_read_frame
+		av_packet_unref(&packet);
+	}
+
+	cv::destroyAllWindows();
+
+	// Free the RGB image
+	av_free(buffer);
+
+	// Close the video file
+	avformat_close_input(&pFormatContext);
+}
+
+void GoProVideoExtractor::writeVideo(const std::string &bag_file, uint64_t last_image_stamp_ns,
+									 const std::string &image_topic)
+{
+	rosbag::Bag bag;
+	if (std::experimental::filesystem::exists(bag_file))
+		bag.open(bag_file, rosbag::bagmode::Append);
+	else
+		bag.open(bag_file, rosbag::bagmode::Write);
+
+	if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0)
+	{
+		std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
+		return;
+	}
+	video_stream = pFormatContext->streams[videoStreamIndex];
+
+	//PIX_FMT_RGB24
+	// Determine required buffer size and allocate buffer
+	int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, image_width,
+											image_height, 1);
+	uint8_t *buffer = (uint8_t *)av_malloc(numBytes * sizeof(uint8_t));
+
+	sws_ctx =
+		sws_getContext(
+			pCodecContext->width,
+			pCodecContext->height,
+			pCodecContext->pix_fmt,
+			image_width,
+			image_height,
+			AV_PIX_FMT_RGB24,
+			SWS_BILINEAR,
+			nullptr,
+			nullptr,
+			nullptr);
+	//
+	// Assign appropriate parts of buffer to image planes in pFrameRGB
+	// Note that pFrameRGB is an AVFrame, but AVFrame is a superset
+	// of AVPicture
+	av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, buffer, AV_PIX_FMT_RGB24,
+						 image_width, image_height, 1);
+
+	//	std::cout << "Video Creation Time: " << uint64_to_string(start_time) << std::endl;
+
+	double global_clock;
+	uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
+
+	int frameFinished;
+	uint64_t seq = 0;
+	while (av_read_frame(pFormatContext, &packet) >= 0)
+	{
+		// Is this a packet from the video stream?
+		if (packet.stream_index == videoStreamIndex)
+		{
+			// Decode video frame
+			avcodec_decode_video2(pCodecContext, pFrame, &frameFinished,
+								  &packet);
+
+			// Did we get a video frame?
+
+			if (packet.dts != AV_NOPTS_VALUE)
+			{
+				global_clock = av_frame_get_best_effort_timestamp(pFrame);
+				global_video_pkt_pts = packet.pts;
+			}
+			else if (global_video_pkt_pts && global_video_pkt_pts != AV_NOPTS_VALUE)
+			{
+				global_clock = global_video_pkt_pts;
+			}
+			else
+			{
+				global_clock = 0;
+			}
+
+			double frame_delay = av_q2d(video_stream->time_base);
+			global_clock *= frame_delay;
+
+			//Only if we are repeating the
+			if (pFrame->repeat_pict > 0)
+			{
+				double extra_delay = pFrame->repeat_pict * (frame_delay * 0.5);
+				global_clock += extra_delay;
+			}
+
+			if (frameFinished)
+			{
+				// Convert the image from its native format to RGB
+				sws_scale(
+					sws_ctx,
+					(uint8_t const *const *)pFrame->data,
+					pFrame->linesize,
+					0,
+					pCodecContext->height,
+					pFrameRGB->data,
+					pFrameRGB->linesize);
+
+				// Save the frame to disk
+				uint64_t nanosecs = (uint64_t)(global_clock * 1e9);
+				if (nanosecs > last_image_stamp_ns)
+				{
+					break;
+				}
+				uint64_t current_stamp = video_creation_time + nanosecs;
+				uint32_t secs = current_stamp * 1e-9;
+				uint32_t n_secs = current_stamp % 1000000000;
+				ros::Time ros_time(secs, n_secs);
+
+				cv::Mat img(image_height, image_width, CV_8UC3, pFrameRGB->data[0], pFrameRGB->linesize[0]);
+				cv::cvtColor(img, img, cv::COLOR_RGB2BGR);
+
+				std_msgs::Header header;
+				header.stamp = ros_time;
+				header.frame_id = "gopro";
+				header.seq = seq++;
+
+				sensor_msgs::ImagePtr imgmsg = cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, img).toImageMsg();
+				bag.write(image_topic, ros_time, imgmsg);
+			}
+		}
+
+		// Free the packet that was allocated by av_read_frame
+		av_packet_unref(&packet);
+	}
+
+	// Free the RGB image
+	av_free(buffer);
+
+	// Close the video file
+	avformat_close_input(&pFormatContext);
+
+	bag.close();
 }
