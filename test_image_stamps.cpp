@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     vector<uint64_t> start_stamps;
     vector<uint32_t> samples;
     imu_extractor.display_video_framerate();
-    imu_extractor.getFrameStamps(start_stamps, samples);
+    imu_extractor.getPayloadStamps(STR2FOURCC("CORI"), start_stamps, samples);
     imu_extractor.show_current_payload(samples.size() - 1);
 
     vector<uint64_t> image_stamps;

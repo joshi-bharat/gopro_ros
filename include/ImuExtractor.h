@@ -16,6 +16,9 @@
 #include "GPMF_mp4reader.h"
 #include "color_codes.h"
 
+#include <ros/ros.h>
+#include <rosbag/bag.h>
+
 class GoProImuExtractor
 {
 
@@ -50,11 +53,14 @@ public:
     uint32_t getNumofSamples(uint32_t fourcc);
     GPMF_ERR show_current_payload(uint32_t index);
 
-    void getFrameStamps(std::vector<uint64_t> &start_stamps, std::vector<uint32_t> &samples);
+    void getPayloadStamps(uint32_t fourcc, std::vector<uint64_t> &start_stamps, std::vector<uint32_t> &samples);
     void skipPayloads(uint32_t last_n_payloads);
     void getImageStamps(std::vector<uint64_t> &image_stamps);
 
     void writeImuData(const std::string &file, uint64_t end_time, const std::string &imu_topic);
+    void writeImuData(rosbag::Bag &bag, const std::string &imu_topic, uint64_t end_time = 0);
+
+    uint64_t getPayloadStartStamp(uint32_t fourcc, uint32_t index);
 
     // GPMF_ERR getRawData(uint32_t fourcc, vector<vector<float>> &readings);
 

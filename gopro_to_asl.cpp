@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
 
     vector<uint64_t> start_stamps;
     vector<uint32_t> samples;
-    imu_extractor.getFrameStamps(start_stamps, samples);
+    imu_extractor.getPayloadStamps(STR2FOURCC("CORI"), start_stamps, samples);
     // imu_extractor.show_gpmf_structure();
 
     vector<uint64_t> gpmf_image_stamps;

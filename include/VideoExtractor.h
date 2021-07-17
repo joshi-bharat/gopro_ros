@@ -20,6 +20,8 @@ extern "C"
 
 #include <opencv2/opencv.hpp>
 
+#include <rosbag/bag.h>
+
 class GoProVideoExtractor
 {
 
@@ -61,6 +63,8 @@ public:
     void displayImages();
     void writeVideo(const std::string &bag_file, uint64_t last_image_stamp_ns,
                     const std::string &image_topic);
+    void writeVideo(rosbag::Bag &bag, uint64_t last_image_stamp_ns,
+                    const std::string &image_topic, bool compress_image);
 
     inline uint32_t getFrameCount() { return num_frames; }
     inline uint64_t getVideoCreationTime() { return video_creation_time; }

@@ -1,0 +1,14 @@
+<launch>
+
+  <!-- Arguments -->
+  <arg name="gopro_folder" default="/home/bjoshi/gopro_static"/>
+  <arg name="rosbag" default="/home/bjoshi/gopro9/gopro_imu_static.bag"/>
+  <arg name="scale" default="0.5"/>
+
+  <node name="multiple_videos" pkg="gopro_ros" type="multiple_videos" output="screen" required="true" > 
+    <param name="gopro_folder" value="$(arg gopro_folder)"/>
+    <param name="rosbag" value="$(arg rosbag)"/>
+    <!-- <param name="scale" value="$(arg scale)"/> -->
+  </node>
+
+</launch>

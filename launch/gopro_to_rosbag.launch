@@ -1,8 +1,8 @@
 <launch>
 
   <!-- Arguments -->
-  <arg name="gopro_video" default="/home/bjoshi/Downloads/GX010035.MP4"/>
-  <arg name="rosbag" default="/home/bjoshi/gopro9/GX010035.bag"/>
+  <arg name="gopro_video" default="/home/bjoshi/gopro9/GX010037.MP4"/>
+  <arg name="rosbag" default="/home/bjoshi/gopro9/GX010037.bag"/>
   <arg name="scale" default="0.5"/>
 
   <node name="gopro_to_rosbag" pkg="gopro_ros" type="gopro_to_rosbag" output="screen" required="true" > 
