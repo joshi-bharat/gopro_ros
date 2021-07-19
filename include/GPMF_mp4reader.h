@@ -1,3 +1,5 @@
+// clang-format off
+
 /*! @file mp4reader.h
 *
 *  @brief Way Too Crude MP4|MOV reader

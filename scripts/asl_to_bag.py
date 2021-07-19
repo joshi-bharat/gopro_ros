@@ -19,7 +19,7 @@ if __name__ == "__main__":
     use_stereo = False
     use_imu = True
 
-    cam0_folder = os.path.join(base_dir, "cam0", "data" )
+    cam0_folder = os.path.join(base_dir, "cam0", "data")
     indx = 0
     files = glob.glob(cam0_folder+"/*")
     files = sorted(files)
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     if use_imu:
         imu_file = open(os.path.join(base_dir, "imu0", "data.csv"))
         indx = 0
-        #skip the first line asl format
+        # skip the first line asl format
         imu_file.readline()
         lines = imu_file.readlines()
         for line in lines:
@@ -86,6 +86,3 @@ if __name__ == "__main__":
 
 
 # cv2.destroyAllWindows()
-
-
-

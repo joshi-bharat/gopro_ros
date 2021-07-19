@@ -18,6 +18,7 @@ catkin_package(
 
 find_package(ffmpeg REQUIRED)
 find_package(OpenCV REQUIRED)
+find_package(Eigen3 3 REQUIRED)
 
 if(FFMPEG_FOUND)
     message("Found FFMPEG/LibAV libraries")
@@ -30,6 +31,7 @@ include_directories(
     ${catkin_INCLUDE_DIRS}
     ${FMPEG_INCLUDE_DIRS}
     ${OpenCV_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
     )
 
 

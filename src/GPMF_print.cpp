@@ -1,3 +1,5 @@
+// clang-format off
+
 /*! @file GPMF_print.c
  *
  *  @brief Demo to output GPMF for debugging

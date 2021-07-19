@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 if __name__ == "__main__":
     base_dir = "/home/bjoshi/GoPro9/vio_test/mav0"
-    cam0_folder = os.path.join(base_dir, "cam0", "data" )
+    cam0_folder = os.path.join(base_dir, "cam0", "data")
     indx = 0
     files = glob.glob(cam0_folder+"/*")
     files = sorted(files)
@@ -29,6 +29,3 @@ if __name__ == "__main__":
 
 
 # cv2.destroyAllWindows()
-
-
-

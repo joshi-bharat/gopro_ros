@@ -1,3 +1,5 @@
+// clang-format off
+
 /*! @file GPMF_utils.h
 *
 *  @brief Utilities GPMF and MP4 handling

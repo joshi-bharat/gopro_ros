@@ -1,3 +1,5 @@
+// clang-format off
+
 /*! @file GPMF_common.h
  * 
  *  @brief GPMF Parser library include
