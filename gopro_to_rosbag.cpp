@@ -31,6 +31,9 @@ int main(int argc, char* argv[]) {
   if (nh_private.hasParam("compressed_image_format"))
     nh_private.getParam("compressed_image_format", compress_images);
 
+  bool grayscale = false;
+  if (nh_private.hasParam("grayscale")) nh_private.getParam("grayscale", grayscale);
+
   rosbag::Bag bag;
   bag.open(rosbag, rosbag::bagmode::Write);
 
@@ -98,6 +101,7 @@ int main(int argc, char* argv[]) {
   // do not skip anything
   // uint64_t last_image_stamp_ns = std::numeric_limits<uint64_t>::max();
 
-  video_extractor.writeVideo(bag, last_image_stamp_ns, "/gopro/image_raw", compress_images, true);
+  video_extractor.writeVideo(
+      bag, last_image_stamp_ns, "/gopro/image_raw", grayscale, compress_images, true);
   imu_extractor.writeImuData(bag, last_image_stamp_ns, "/gopro/imu");
 }

@@ -67,6 +67,7 @@ public:
   void writeVideo(rosbag::Bag& bag,
                   uint64_t last_image_stamp_ns,
                   const std::string& image_topic,
+                  bool grayscale = false,
                   bool compress_image = false,
                   bool display_images = false);
 

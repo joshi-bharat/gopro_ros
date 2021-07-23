@@ -189,12 +189,12 @@ ros::Time saveBag(rosbag::Bag& bag,
 }
 
 int main(int argc, char** argv) {
-  std::string first_video = "/home/bjoshi/gopro9/GX010037.MP4";
-  std::string second_video = "/home/bjoshi/gopro9/GX010035.MP4";
-  std::string bag_file = "/home/bjoshi/gopro9/gopro.bag";
+  std::string first_video = "/home/bjoshi/Downloads/GX010054.MP4";
+  std::string second_video = "/home/bjoshi/Downloads/GX010058.MP4";
+  std::string bag_file = "/home/bjoshi/gopro9/gopro_outdoor.bag";
 
   bool compress = false;
-  double scaling_factor = 1.0;
+  double scaling_factor = 0.5;
   double duration = 1.0 / 30.0;
 
   ros::init(argc, argv, "gopro_bag");
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
   ros::Time time = ros::Time::now();
 
-  std::string img_topic = "gopro/image_raw";
+  std::string img_topic = "/gopro/image_raw";
 
   rosbag::Bag bag;
   bag.open(bag_file, rosbag::bagmode::Write);

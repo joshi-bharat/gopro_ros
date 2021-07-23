@@ -1,16 +1,19 @@
 <launch>
 
   <!-- Arguments -->
-  <arg name="gopro_video" default="/home/bjoshi/Downloads/GX010058.MP4"/>
-  <arg name="rosbag" default="/home/bjoshi/Downloads/GX010058.bag"/>
+  <arg name="gopro_video" default="/home/bjoshi/gopro/GX010106.MP4"/>
+  <arg name="rosbag" default="/home/bjoshi/gopro/GX010106.bag"/>
   <arg name="scale" default="0.5"/>
-  <arg name="compressed_image_format" default="true"/>
+  <arg name="compressed_image_format" default="false"/>
+  <arg name="grayscale" default="true"/>
 
   <node name="gopro_to_rosbag" pkg="gopro_ros" type="gopro_to_rosbag" output="screen" required="true" > 
     <param name="gopro_video" value="$(arg gopro_video)"/>
     <param name="rosbag" value="$(arg rosbag)"/>
     <param name="scale" value="$(arg scale)"/>
     <param name="compressed_image_format" value="$(arg compressed_image_format)"/>
+    <param name="grayscale" value="$(arg grayscale)"/>
+
   </node>
 
 </launch>

@@ -474,6 +474,8 @@ void GoProVideoExtractor::displayImages() {
 void GoProVideoExtractor::writeVideo(const std::string& bag_file,
                                      uint64_t last_image_stamp_ns,
                                      const std::string& image_topic) {
+  ProgressBar progress(std::clog, 80u, "Progress");
+
   rosbag::Bag bag;
   if (std::experimental::filesystem::exists(bag_file))
     bag.open(bag_file, rosbag::bagmode::Append);
@@ -572,6 +574,9 @@ void GoProVideoExtractor::writeVideo(const std::string& bag_file,
         sensor_msgs::ImagePtr imgmsg =
             cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, img).toImageMsg();
         bag.write(image_topic, ros_time, imgmsg);
+
+        double percent = (double)seq / (double)num_frames;
+        progress.write(percent);
       }
     }
 
@@ -591,8 +596,11 @@ void GoProVideoExtractor::writeVideo(const std::string& bag_file,
 void GoProVideoExtractor::writeVideo(rosbag::Bag& bag,
                                      uint64_t last_image_stamp_ns,
                                      const std::string& image_topic,
+                                     bool grayscale,
                                      bool compress_image,
                                      bool display_images) {
+  ProgressBar progress(std::clog, 80u, "Progress");
+
   if (avformat_open_input(&pFormatContext, video_file.c_str(), NULL, NULL) != 0) {
     std::cout << RED << "Could not open file" << video_file.c_str() << RESET << std::endl;
     return;
@@ -627,6 +635,7 @@ void GoProVideoExtractor::writeVideo(rosbag::Bag& bag,
   uint64_t global_video_pkt_pts = AV_NOPTS_VALUE;
 
   int frameFinished;
+  uint32_t frame_count = 0;
   while (av_read_frame(pFormatContext, &packet) >= 0) {
     // Is this a packet from the video stream?
     if (packet.stream_index == videoStreamIndex) {
@@ -676,24 +685,33 @@ void GoProVideoExtractor::writeVideo(rosbag::Bag& bag,
         cv::Mat img(image_height, image_width, CV_8UC3, pFrameRGB->data[0], pFrameRGB->linesize[0]);
         cv::cvtColor(img, img, cv::COLOR_RGB2BGR);
 
+        std::string encoding = sensor_msgs::image_encodings::BGR8;
+        if (grayscale) {
+          if (grayscale) cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
+          encoding = sensor_msgs::image_encodings::MONO8;
+        }
+
         if (display_images) {
           cv::imshow("GoPro Video", img);
           cv::waitKey(1);
         }
+
         std_msgs::Header header;
         header.stamp = ros_time;
         header.frame_id = "gopro";
 
         if (compress_image) {
           sensor_msgs::CompressedImagePtr img_msg =
-              cv_bridge::CvImage(header, "bgr8", img).toCompressedImageMsg();
+              cv_bridge::CvImage(header, encoding, img).toCompressedImageMsg();
           bag.write(image_topic + "/compressed", ros_time, img_msg);
         } else {
-          sensor_msgs::ImagePtr imgmsg =
-              cv_bridge::CvImage(header, sensor_msgs::image_encodings::BGR8, img).toImageMsg();
+          sensor_msgs::ImagePtr imgmsg = cv_bridge::CvImage(header, encoding, img).toImageMsg();
           bag.write(image_topic, ros_time, imgmsg);
         }
       }
+
+      double percent = (double)frame_count++ / (double)num_frames;
+      progress.write(percent);
     }
 
     // Free the packet that was allocated by av_read_frame
