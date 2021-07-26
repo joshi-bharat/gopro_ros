@@ -38,6 +38,7 @@ sudo apt install libeigen3-dev
 ## Install gopro_ros
 
 Before proceeding, ensure all dependencies are installed. To install gopro_ros
+
 ```bash
 mkdir -p ~/gopro_ws/src
 cd gopro_ws/src
@@ -47,3 +48,10 @@ catkin_make
 source ~/gopro_ws/devel/setup.bash
 # add this to ~/.bashrc to make this permanent 
 ```
+
+# Usage
+
+## Save to rosbag
+
+
+## Save as Euroc dataset
