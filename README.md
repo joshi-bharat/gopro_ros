@@ -51,7 +51,36 @@ source ~/gopro_ws/devel/setup.bash
 
 # Usage
 
+GoPro splits video into smaller chunks. By splitting up the video it reduces the chance of you losing all your footage if the file gets corrupted somehow. It’s called chaptering, and the idea is that if one chapter gets corrupted the others should still be okay because they’re separate files.
+
 ## Save to rosbag
 
+To save GoPro video with IMU measurements to rosbag:
 
-## Save as Euroc dataset
+```bash
+roslauch gopro_ros gopro_to_rosbag.launch gopro_video:=<gopro_video_file> rosbag:=<bag_file>
+```
+
+If you have multiple files from a single session, put all videos in same folder you can use the following command to concatenate into a single rosbag:
+
+```bash
+roslaunch gopro_ros gopro_to_rosbag.launch gopro_folder:=<folder_with_gopro_video_files> multiple_files:=true rosbag:=<bag_file>
+```
+
+## Save in Euroc format
+
+To save GoPro video with IMU measurements in Euroc format:
+
+```bash
+roslauch gopro_ros gopro_to_rosbag.launch gopro_video:=<gopro_video_file> asl_dir:=<asl_format_dir>
+```
+
+If you have multiple files from a single session, put all videos in same folder you can use the following command extract all videos in a single folder:
+
+```bash
+roslaunch gopro_ros gopro_to_rosbag.launch gopro_folder:=<folder_with_gopro_video_files> multiple_files:=true asl_dir:=<asl_format_dir>
+```
+
+# Calibration
+
+Notes on camera-imu calibration for GoPro9 can be found at [GoPro9 Camera-IMU calibration](docs/calibration.md).

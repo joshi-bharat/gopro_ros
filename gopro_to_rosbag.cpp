@@ -47,12 +47,15 @@ int main(int argc, char* argv[]) {
   bool display_images = false;
   if (nh_private.hasParam("display_images")) nh_private.getParam("display_images", display_images);
 
+  bool multiple_files = false;
+  if (nh_private.hasParam("multiple_files")) nh_private.getParam("multiple_files", multiple_files);
+
   rosbag::Bag bag;
   bag.open(rosbag, rosbag::bagmode::Write);
 
   vector<fs::path> video_files;
 
-  if (is_gopro_folder) {
+  if (is_gopro_folder && multiple_files) {
     std::copy(fs::directory_iterator(gopro_folder),
               fs::directory_iterator(),
               std::back_inserter(video_files));

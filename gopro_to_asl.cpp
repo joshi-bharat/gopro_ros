@@ -35,16 +35,18 @@ int main(int argc, char* argv[]) {
   double scaling = 1.0;
   if (nh_private.hasParam("scale")) nh_private.getParam("scale", scaling);
 
-
   bool grayscale = false;
   if (nh_private.hasParam("grayscale")) nh_private.getParam("grayscale", grayscale);
 
   bool display_images = false;
   if (nh_private.hasParam("display_images")) nh_private.getParam("display_images", display_images);
 
+  bool multiple_files = false;
+  if (nh_private.hasParam("multiple_files")) nh_private.getParam("multiple_files", multiple_files);
+
   vector<fs::path> video_files;
 
-  if (is_gopro_folder) {
+  if (is_gopro_folder && multiple_files) {
     std::copy(fs::directory_iterator(gopro_folder),
               fs::directory_iterator(),
               std::back_inserter(video_files));
@@ -151,8 +153,7 @@ int main(int argc, char* argv[]) {
       ros::shutdown();
     }
 
-    video_extractor.extractFrames(
-        image_folder, image_stamps, grayscale, display_images);
+    video_extractor.extractFrames(image_folder, image_stamps, grayscale, display_images);
   }
 
   ROS_INFO_STREAM("[ACCL] Payloads: " << accl_queue.size());
