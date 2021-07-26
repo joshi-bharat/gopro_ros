@@ -247,14 +247,15 @@ GPMF_ERR GoProImuExtractor::show_current_payload(uint32_t index) {
   GPMF_ResetState(ms);
 }
 
-void GoProImuExtractor::getImageStamps(vector<uint64_t>& image_stamps) {
-  uint64_t first_frame_us;
+void GoProImuExtractor::getImageStamps(vector<uint64_t>& image_stamps,
+                                       uint64_t image_end_stamp,
+                                       bool offset_only) {
+  vector<vector<double>> cam_orient_data;
+
   uint64_t current_stamp, prev_stamp;
 
-  vector<uint64_t> steps;
   uint64_t total_samples = 0;
-
-  vector<vector<double>> cori_data;
+  uint64_t seq = 0;
 
   for (uint32_t index = 0; index < payloads; index++) {
     GPMF_ERR ret;
@@ -268,34 +269,46 @@ void GoProImuExtractor::getImageStamps(vector<uint64_t>& image_stamps) {
     ret = GPMF_Init(ms, payload, payload_size);
     if (ret != GPMF_OK) cleanup();
 
-    if (index == 0) {
-      first_frame_us = get_stamp(STR2FOURCC("CORI"));
-      cout << "Image Initial Stamp: " << first_frame_us << endl;
-    }
-
     current_stamp = get_stamp(STR2FOURCC("CORI"));
+
+    current_stamp = current_stamp * 1000;  // us to ns
+
     if (index > 0) {
       uint64_t time_span = current_stamp - prev_stamp;
-      double step_size = (double)time_span / (double)cori_data.size();
-      steps.emplace_back(step_size);
 
-      for (int i = 0; i < cori_data.size(); ++i) {
-        uint64_t s = prev_stamp + (uint64_t)((double)i * step_size);
-        uint64_t ros_stamp = s - first_frame_us;
-        image_stamps.push_back(ros_stamp);
+      if (time_span < 0) {
+        cout << RED << "previous timestamp should be smaller than current stamp" << RESET << endl;
+        exit(1);
       }
+
+      double step_size = (double)time_span / (double)cam_orient_data.size();
+
+      for (uint32_t i = 0; i < cam_orient_data.size(); i++) {
+        uint64_t stamp = prev_stamp + (uint64_t)((double)i * step_size);
+        if (!offset_only) stamp = movie_creation_time + stamp;
+        image_stamps.push_back(stamp);
+      }
+      total_samples += cam_orient_data.size();
     }
 
-    cori_data.clear();
-    get_scaled_data(STR2FOURCC("CORI"), cori_data);
+    cam_orient_data.clear();
+    get_scaled_data(STR2FOURCC("CORI"), cam_orient_data);
 
-    total_samples += cori_data.size();
-    //        double start_stamp_secs = ((double) current_stamp)*1e-9;
-    //        std::cout << "Payload Start Stamp: " << start_stamp_secs << "\tSamples: " <<
-    //        accl_data.size() << endl;
     prev_stamp = current_stamp;
 
     GPMF_Free(ms);
+  }
+
+  if (image_end_stamp > 0) {
+    // ROS_WARN_STREAM("Writing last payload");
+    uint64_t time_span = image_end_stamp * 1000 - current_stamp;
+    double step_size = (double)time_span / (double)cam_orient_data.size();
+
+    for (uint32_t i = 0; i < cam_orient_data.size(); i++) {
+      uint64_t stamp = prev_stamp + (uint64_t)((double)i * step_size);
+      if (!offset_only) stamp = movie_creation_time + stamp;
+      image_stamps.push_back(stamp);
+    }
   }
 }
 

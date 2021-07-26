@@ -56,7 +56,9 @@ public:
                         std::vector<uint64_t>& start_stamps,
                         std::vector<uint32_t>& samples);
   void skipPayloads(uint32_t last_n_payloads);
-  void getImageStamps(std::vector<uint64_t>& image_stamps);
+  void getImageStamps(std::vector<uint64_t>& image_stamps,
+                      uint64_t image_end_stamp = 0,
+                      bool offset_only = false);
 
   void writeImuData(rosbag::Bag& bag, uint64_t end_time, const std::string& imu_topic);
   void readImuData(std::deque<AcclMeasurement>& accl_data,
@@ -64,6 +66,10 @@ public:
                    uint64_t accl_end_time = 0,
                    uint64_t gyro_end_time = 0);
   uint64_t getPayloadStartStamp(uint32_t fourcc, uint32_t index);
+  void readImuData(std::vector<uint64_t>& image_stamps,
+                   std::deque<GyroMeasurement>& gyro_data,
+                   uint64_t accl_end_time = 0,
+                   uint64_t gyro_end_time = 0);
 
   // GPMF_ERR getRawData(uint32_t fourcc, vector<vector<float>> &readings);
 

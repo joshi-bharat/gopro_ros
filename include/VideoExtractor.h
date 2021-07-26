@@ -45,7 +45,7 @@ private:
   uint32_t num_frames;
 
 public:
-  GoProVideoExtractor(const std::string file, double scaling_factor = 1.0);
+  GoProVideoExtractor(const std::string file, double scaling_factor = 1.0, bool dump_info = false);
   ~GoProVideoExtractor();
 
   void save_to_png(AVFrame* frame,
@@ -58,6 +58,10 @@ public:
   void save_raw(AVFrame* pFrame, int width, int height, std::string filename);
 
   int extractFrames(const std::string& base_folder, uint64_t last_image_stamp_ns);
+  int extractFrames(const std::string& image_folder,
+                    const std::vector<uint64_t> image_stamps,
+                    bool grayscale = false,
+                    bool display_images = false);
   int getFrameStamps(std::vector<uint64_t>& stamps);
 
   void displayImages();
@@ -70,6 +74,13 @@ public:
                   bool grayscale = false,
                   bool compress_image = false,
                   bool display_images = false);
+
+  void writeVideo(rosbag::Bag& bag,
+                  const std::string& image_topic,
+                  const std::vector<uint64_t> image_stamps,
+                  bool grayscale,
+                  bool compress_image,
+                  bool display_images);
 
   inline uint32_t getFrameCount() { return num_frames; }
   inline uint64_t getVideoCreationTime() { return video_creation_time; }

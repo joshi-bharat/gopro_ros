@@ -62,23 +62,23 @@ struct ImuMeasurement {
 struct AcclMeasurement {
   AcclMeasurement() = default;
   AcclMeasurement(const ImuStamp& timestamp, const ImuAccl& accl_data)
-      : timestamp_(timestamp), accl_(accl_data) {}
+      : timestamp_(timestamp), data_(accl_data) {}
   AcclMeasurement(ImuStamp&& timestamp, ImuAccl& accl_data)
-      : timestamp_(std::move(timestamp)), accl_(std::move(accl_data)) {}
+      : timestamp_(std::move(timestamp)), data_(std::move(accl_data)) {}
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   ImuStamp timestamp_;
-  ImuAccl accl_;
+  ImuAccl data_;
 };
 
 struct GyroMeasurement {
   GyroMeasurement() = default;
   GyroMeasurement(const ImuStamp& timestamp, const ImuAccl& accl_data)
-      : timestamp_(timestamp), gyro_(accl_data) {}
+      : timestamp_(timestamp), data_(accl_data) {}
   GyroMeasurement(ImuStamp&& timestamp, ImuAccl& accl_data)
-      : timestamp_(std::move(timestamp)), gyro_(std::move(accl_data)) {}
+      : timestamp_(std::move(timestamp)), data_(std::move(accl_data)) {}
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   ImuStamp timestamp_;
-  ImuGyro gyro_;
+  ImuGyro data_;
 };

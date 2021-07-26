@@ -53,5 +53,3 @@ target_link_libraries(gopro_to_rosbag ${PROJECT_NAME} ${catkin_LIBRARIES})
 add_executable(combine_test combine_videos.cpp)
 target_link_libraries(combine_test ${catkin_LIBRARIES} ${FFMPEG_LIBRARIES} ${OpenCV_LIBS} -lstdc++fs)
 
-add_executable(multiple_videos gopro_multiple_videos.cpp)
-target_link_libraries(multiple_videos  ${PROJECT_NAME} ${catkin_LIBRARIES} ${FFMPEG_LIBRARIES} ${OpenCV_LIBS}  -lstdc++fs )
