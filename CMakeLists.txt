@@ -44,9 +44,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${catkin_LIBRARIES} ${FFMPEG_LIBRA
 add_executable(gopro_to_asl gopro_to_asl.cpp)
 target_link_libraries(gopro_to_asl ${PROJECT_NAME} ${catkin_LIBRARIES})
 
-add_executable(image_stamp_test test_image_stamps.cpp)
-target_link_libraries(image_stamp_test ${PROJECT_NAME} ${catkin_LIBRARIES})
-
 add_executable(gopro_to_rosbag gopro_to_rosbag.cpp)
 target_link_libraries(gopro_to_rosbag ${PROJECT_NAME} ${catkin_LIBRARIES})
 

@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
   for (uint32_t i = 0; i < video_files.size(); i++) {
     image_stamps.clear();
 
-    ROS_WARN_STREAM("Opening Video File" << video_files[i].filename().string());
+    ROS_WARN_STREAM("Opening Video File: " << video_files[i].filename().string());
 
     fs::path file = video_files[i];
     GoProImuExtractor imu_extractor(file.string());
@@ -97,10 +97,10 @@ int main(int argc, char* argv[]) {
                                         << " End stamp: " << start_stamps[samples.size() - 1]
                                         << " Total Samples: " << samples.at(samples.size() - 1));
     imu_extractor.getPayloadStamps(STR2FOURCC("CORI"), start_stamps, samples);
-    ROS_INFO_STREAM("[GYRO] Payloads: " << start_stamps.size()
-                                        << " Start stamp: " << start_stamps[0]
-                                        << " End stamp: " << start_stamps[samples.size() - 1]
-                                        << " Total Samples: " << samples.at(samples.size() - 1));
+    ROS_INFO_STREAM("[Image] Payloads: " << start_stamps.size()
+                                         << " Start stamp: " << start_stamps[0]
+                                         << " End stamp: " << start_stamps[samples.size() - 1]
+                                         << " Total Samples: " << samples.at(samples.size() - 1));
 
     uint64_t accl_end_stamp = 0, gyro_end_stamp = 0;
     uint64_t video_end_stamp = 0;
