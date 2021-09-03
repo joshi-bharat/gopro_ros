@@ -142,37 +142,40 @@ int main(int argc, char* argv[]) {
   ROS_INFO_STREAM("[ACCL] Payloads: " << accl_queue.size());
   ROS_INFO_STREAM("[GYRO] Payloads: " << gyro_queue.size());
 
+  assert(accl_queue.size() == gyro_queue.size());
+
   while (!accl_queue.empty() && !gyro_queue.empty()) {
     AcclMeasurement accl = accl_queue.front();
     GyroMeasurement gyro = gyro_queue.front();
-    // ROS_INFO_STREAM("***************Here**********");
     int64_t diff = accl.timestamp_ - gyro.timestamp_;
+
+    Timestamp stamp;
     if (abs(diff) > 100000) {
-      // I will need to handle this case more carefully using interpolation
-      ROS_FATAL_STREAM("[ACCL] " << diff << " ns between imu and accl");
-      ros::requestShutdown();
+      // I will need to handle this case more carefully
+      ROS_WARN_STREAM(diff << " ns difference between gyro and accl");
+      stamp = (Timestamp)(((double)accl.timestamp_ + (double)gyro.timestamp_) / 2.0);
     } else {
-      Timestamp stamp = accl.timestamp_;
-      uint32_t secs = stamp * 1e-9;
-      uint32_t n_secs = stamp % 1000000000;
-      ros::Time ros_time(secs, n_secs);
-
-      sensor_msgs::Imu imu_msg;
-      std_msgs::Header header;
-      header.stamp = ros_time;
-      header.frame_id = "body";
-      imu_msg.header = header;
-      imu_msg.linear_acceleration.x = accl.data_.x();
-      imu_msg.linear_acceleration.y = accl.data_.y();
-      imu_msg.linear_acceleration.z = accl.data_.z();
-      imu_msg.angular_velocity.x = gyro.data_.x();
-      imu_msg.angular_velocity.y = gyro.data_.y();
-      imu_msg.angular_velocity.z = gyro.data_.z();
-
-      bag.write("/gopro/imu", ros_time, imu_msg);
-
-      accl_queue.pop_front();
-      gyro_queue.pop_front();
+      stamp = accl.timestamp_;
     }
+
+    uint32_t secs = stamp * 1e-9;
+    uint32_t n_secs = stamp % 1000000000;
+    ros::Time ros_time(secs, n_secs);
+    sensor_msgs::Imu imu_msg;
+    std_msgs::Header header;
+    header.stamp = ros_time;
+    header.frame_id = "body";
+    imu_msg.header = header;
+    imu_msg.linear_acceleration.x = accl.data_.x();
+    imu_msg.linear_acceleration.y = accl.data_.y();
+    imu_msg.linear_acceleration.z = accl.data_.z();
+    imu_msg.angular_velocity.x = gyro.data_.x();
+    imu_msg.angular_velocity.y = gyro.data_.y();
+    imu_msg.angular_velocity.z = gyro.data_.z();
+
+    bag.write("/gopro/imu", ros_time, imu_msg);
+
+    accl_queue.pop_front();
+    gyro_queue.pop_front();
   }
 }
