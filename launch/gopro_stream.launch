@@ -1,0 +1,18 @@
+<launch>
+
+  <!-- Arguments -->
+  <arg name="camera_name" default="gopro2"/>
+  <arg name="ip_address" default="172.22.186.51"/>
+  <arg name="device" default="/dev/video4"/>
+  <arg name="resolution" default="720"/>
+  <arg name="fov" default="wide"/>
+
+  <node name="gopro_stream1" pkg="gopro_ros" type="gopro_stream.py" output="screen" required="true" > 
+    <param name="camera_name" type="str" value="$(arg camera_name)"/>
+    <param name="ip_address" type="str" value="$(arg ip_address)"/>
+    <param name="device" type="str" value="$(arg device)"/>
+    <param name="resolution" type="str" value="$(arg resolution)"/>
+    <param name="fov" type="str" value="$(arg fov)"/>
+  </node>
+
+</launch>
