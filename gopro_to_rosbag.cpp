@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
 
     fs::path file = video_files[i];
     GoProImuExtractor imu_extractor(file.string());
-    GoProVideoExtractor video_extractor(file.string(), scaling);
+    GoProVideoExtractor video_extractor(file.string(), scaling, true);
 
     imu_extractor.getPayloadStamps(STR2FOURCC("ACCL"), start_stamps, samples);
     ROS_INFO_STREAM("[ACCL] Payloads: " << start_stamps.size()
@@ -144,6 +144,8 @@ int main(int argc, char* argv[]) {
 
   assert(accl_queue.size() == gyro_queue.size());
 
+  double previous = accl_queue.front().timestamp_ * 1e-9;
+
   while (!accl_queue.empty() && !gyro_queue.empty()) {
     AcclMeasurement accl = accl_queue.front();
     GyroMeasurement gyro = gyro_queue.front();
@@ -158,6 +160,9 @@ int main(int argc, char* argv[]) {
       stamp = accl.timestamp_;
     }
 
+    double current = stamp * 1e-9;
+    // assert(abs(current - previous) < 0.001);
+    previous = current;
     uint32_t secs = stamp * 1e-9;
     uint32_t n_secs = stamp % 1000000000;
     ros::Time ros_time(secs, n_secs);

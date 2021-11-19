@@ -50,3 +50,15 @@ target_link_libraries(gopro_to_rosbag ${PROJECT_NAME} ${catkin_LIBRARIES})
 add_executable(combine_test combine_videos.cpp)
 target_link_libraries(combine_test ${catkin_LIBRARIES} ${FFMPEG_LIBRARIES} ${OpenCV_LIBS} -lstdc++fs)
 
+catkin_python_setup()
+# all install targets should use catkin DESTINATION variables
+# See http://ros.org/doc/api/catkin/html/adv_user_guide/variables.html
+catkin_install_python(PROGRAMS scripts/gopro_stream.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
+
+## Mark executable scripts (Python etc.) for installation
+## in contrast to setup.py, you can choose the destination
+install(PROGRAMS
+   scripts/gopro_stream.py
+   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+ )
