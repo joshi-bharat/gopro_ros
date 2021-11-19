@@ -1,0 +1,14 @@
+#register gopro devices
+
+sudo modprobe v4l2loopback devices=2 video_nr=3,4 card_label="GoPro1","GoPro2" exclusive_caps=1
+
+#list v4l2 devices
+
+
+ffmpeg -nostdin -threads 2 -i 'udp://172.22.186.51:8554?overrun_nonfatal=1&fifo_size=50000000&buffer_size=425984' -f:v mpegts -fflags nobuffer -vf format=yuv420p -f v4l2 /dev/video4
+
+#list iptables rules
+sudo iptables -t nat -v -L PREROUTING -n --line-number
+
+#delete iptables rule
+sudo iptables -t nat -D PREROUTING {rule-number-here}
