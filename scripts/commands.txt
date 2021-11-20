@@ -12,3 +12,6 @@ sudo iptables -t nat -v -L PREROUTING -n --line-number
 
 #delete iptables rule
 sudo iptables -t nat -D PREROUTING {rule-number-here}
+
+#add prerouting for gopro
+sudo iptables -t nat -A PREROUTING -p udp -s 172.22.186.51 --dport 8554 -j DNAT --to-destination 172.22.186.53:83002
