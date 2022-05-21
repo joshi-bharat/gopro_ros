@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
                                         << " End stamp: " << start_stamps[samples.size() - 1]
                                         << " Total Samples: " << samples.at(samples.size() - 1));
     imu_extractor.getPayloadStamps(STR2FOURCC("CORI"), start_stamps, samples);
-    ROS_INFO_STREAM("[GYRO] Payloads: " << start_stamps.size()
+    ROS_INFO_STREAM("[CORI] Payloads: " << start_stamps.size()
                                         << " Start stamp: " << start_stamps[0]
                                         << " End stamp: " << start_stamps[samples.size() - 1]
                                         << " Total Samples: " << samples.at(samples.size() - 1));
@@ -170,26 +170,27 @@ int main(int argc, char* argv[]) {
     AcclMeasurement accl = accl_queue.front();
     GyroMeasurement gyro = gyro_queue.front();
     // ROS_INFO_STREAM("***************Here**********");
+    Timestamp stamp;
     int64_t diff = accl.timestamp_ - gyro.timestamp_;
     if (abs(diff) > 100000) {
-      // I will need to handle this case more carefully using interpolation
-      ROS_FATAL_STREAM("[ACCL] " << diff << " ns between imu and accl");
-      ros::requestShutdown();
+      // I will need to handle this case more carefully
+      ROS_WARN_STREAM(diff << " ns difference between gyro and accl");
+      stamp = (Timestamp)(((double)accl.timestamp_ + (double)gyro.timestamp_) / 2.0);
     } else {
-      Timestamp stamp = accl.timestamp_;
-      imu_stream << uint64_to_string(stamp);
-
-      imu_stream << "," << gyro.data_.x();
-      imu_stream << "," << gyro.data_.y();
-      imu_stream << "," << gyro.data_.z();
-
-      imu_stream << "," << accl.data_.x();
-      imu_stream << "," << accl.data_.y();
-      imu_stream << "," << accl.data_.z() << endl;
-
-      accl_queue.pop_front();
-      gyro_queue.pop_front();
+      stamp = accl.timestamp_;
     }
+    imu_stream << uint64_to_string(stamp);
+
+    imu_stream << "," << gyro.data_.x();
+    imu_stream << "," << gyro.data_.y();
+    imu_stream << "," << gyro.data_.z();
+
+    imu_stream << "," << accl.data_.x();
+    imu_stream << "," << accl.data_.y();
+    imu_stream << "," << accl.data_.z() << endl;
+
+    accl_queue.pop_front();
+    gyro_queue.pop_front();
   }
 
   imu_stream.close();
