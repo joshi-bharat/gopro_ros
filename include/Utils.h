@@ -47,6 +47,20 @@ using ImuAccGyr = Eigen::Matrix<double, 6, 1>;
 using ImuAccl = Eigen::Matrix<double, 3, 1>;
 using ImuGyro = Eigen::Matrix<double, 3, 1>;
 
+using MagneticField = Eigen::Matrix<double, 3, 1>;
+
+struct MagMeasurement {
+  MagMeasurement() = default;
+  MagMeasurement(const Timestamp& timestamp, const MagneticField& magnetic_field)
+      : timestamp_(timestamp), magfield_(magnetic_field) {}
+  MagMeasurement(Timestamp&& timestamp, MagneticField&& magnetic_field)
+      : timestamp_(std::move(timestamp)), magfield_(std::move(magnetic_field)) {}
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+  Timestamp timestamp_;
+  MagneticField magfield_;
+};
+
 struct ImuMeasurement {
   ImuMeasurement() = default;
   ImuMeasurement(const ImuStamp& timestamp, const ImuAccGyr& imu_data)
