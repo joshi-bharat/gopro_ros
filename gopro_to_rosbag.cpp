@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
   }
 
   auto end = std::remove_if(video_files.begin(), video_files.end(), [](const fs::path& p) {
-    return p.extension() != ".MP4" || fs::is_directory(p);
+    return ((p.extension() != ".MP4" && p.extension() != ".mp4") || fs::is_directory(p));
   });
   video_files.erase(end, video_files.end());
 
@@ -79,7 +79,6 @@ int main(int argc, char* argv[]) {
 
   vector<uint64_t> image_stamps;
 
-  bool has_magnetic_field_readings = false;
   for (uint32_t i = 0; i < video_files.size(); i++) {
     image_stamps.clear();
 
@@ -88,10 +87,6 @@ int main(int argc, char* argv[]) {
     fs::path file = video_files[i];
     GoProImuExtractor imu_extractor(file.string());
     GoProVideoExtractor video_extractor(file.string(), scaling, true);
-
-    if (i == 0 && imu_extractor.getNumofSamples(STR2FOURCC("MAGN"))) {
-      has_magnetic_field_readings = true;
-    }
 
     imu_extractor.getPayloadStamps(STR2FOURCC("ACCL"), start_stamps, samples);
     ROS_INFO_STREAM("[ACCL] Payloads: " << start_stamps.size()
@@ -118,9 +113,6 @@ int main(int argc, char* argv[]) {
       accl_end_stamp = imu_extractor_next.getPayloadStartStamp(STR2FOURCC("ACCL"), 0);
       gyro_end_stamp = imu_extractor_next.getPayloadStartStamp(STR2FOURCC("GYRO"), 0);
       video_end_stamp = imu_extractor_next.getPayloadStartStamp(STR2FOURCC("CORI"), 0);
-      if (has_magnetic_field_readings) {
-        magnetometer_end_stamp = imu_extractor_next.getPayloadStartStamp(STR2FOURCC("MAGN"), 0);
-      }
     }
 
     imu_extractor.readImuData(accl_queue, gyro_queue, accl_end_stamp, gyro_end_stamp);
